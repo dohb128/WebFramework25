@@ -1,14 +1,14 @@
 import { Button } from "../ui/button";
 import { cn } from "../ui/utils";
-import { 
-  Calendar, 
-  Home, 
-  Building2, 
-  ClipboardList, 
-  Users, 
+import {
+  Calendar,
+  Home,
+  Building2,
+  ClipboardList,
+  Users,
   BarChart3,
   Settings,
-  HelpCircle
+  HelpCircle,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -29,21 +29,30 @@ const menuItems = [
 
 export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
   return (
-    <div className="w-64 bg-white border-r h-full">
+    <div className="w-64 h-full bg-white border-r shadow-sm"> {/* ✅ 흰색 배경 고정 */}
       <nav className="p-4 space-y-2">
         {menuItems.map((item) => {
           const Icon = item.icon;
+          const isActive = activeTab === item.id;
+
           return (
             <Button
               key={item.id}
-              variant={activeTab === item.id ? "default" : "ghost"}
+              variant={isActive ? "default" : "ghost"}
               className={cn(
                 "w-full justify-start",
-                activeTab === item.id && "bg-primary text-primary-foreground"
+                isActive
+                  ? "bg-primary text-primary-foreground"
+                  : "hover:bg-gray-100 hover:text-primary"
               )}
               onClick={() => onTabChange(item.id)}
             >
-              <Icon className="mr-2 h-4 w-4" />
+              <Icon
+                className={cn(
+                  "mr-2 h-4 w-4",
+                  isActive ? "text-primary-foreground" : "text-gray-600"
+                )}
+              />
               {item.label}
             </Button>
           );

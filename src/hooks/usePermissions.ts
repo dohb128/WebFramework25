@@ -1,4 +1,4 @@
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/useAuth';
 import type { Permission, NavigationItem, FacilityType } from '../types/permissions';
 import { ROLE_PERMISSIONS, NAVIGATION_PERMISSIONS, FACILITY_ACCESS } from '../types/permissions';
 

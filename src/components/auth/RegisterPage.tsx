@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../contexts/useAuth';
 import { AuthLayout } from './AuthLayout';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -11,10 +11,10 @@ import type { UserRole } from '../../types/auth';
 import { ROLE_LABELS } from '../../types/permissions';
 
 interface RegisterPageProps {
-  onShowLogin: () => void;
+  onNavigate: (tab: string) => void;
 }
 
-export function RegisterPage({ onShowLogin }: RegisterPageProps) {
+export function RegisterPage({ onNavigate }: RegisterPageProps) {
   const { register, isLoading } = useAuth();
   const [formData, setFormData] = useState({
     email: '',
@@ -113,13 +113,13 @@ export function RegisterPage({ onShowLogin }: RegisterPageProps) {
           <Label htmlFor="role">역할</Label>
           <Select
             value={formData.role}
-            onValueChange={(value: UserRole) => handleChange('role', value)}
+            onValueChange={(value) => handleChange('role', value)}
             disabled={isLoading}
           >
             <SelectTrigger className="bg-input-background">
               <SelectValue placeholder="역할을 선택하세요" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="bg-white border rounded-md shadow-md">
               <SelectItem value="civilian">{ROLE_LABELS.civilian}</SelectItem>
               <SelectItem value="athlete">{ROLE_LABELS.athlete}</SelectItem>
               <SelectItem value="coach">{ROLE_LABELS.coach}</SelectItem>
@@ -208,12 +208,22 @@ export function RegisterPage({ onShowLogin }: RegisterPageProps) {
               type="button"
               variant="link"
               className="p-0 h-auto text-primary"
-              onClick={onShowLogin}
+              onClick={() => onNavigate('login')}
               disabled={isLoading}
             >
               로그인
             </Button>
           </p>
+        </div>
+
+        <div className="mt-6 p-4 bg-primary/10 rounded-md border border-primary/20">
+          <h4 className="font-medium mb-3 text-primary">📋 역할별 권한 안내</h4>
+          <div className="text-sm text-muted-foreground space-y-2">
+            <p>• 🥇 <strong>선수:</strong> 모든 시설 예약 및 차량 배차 이용 가능</p>
+            <p>• 👨‍🏫 <strong>코치:</strong> 팀 시설 예약 관리 및 선수 지원</p>
+            <p>• ⚙️ <strong>관리자:</strong> 전체 시스템 관리 및 통계 확인</p>
+            <p>• 🏃‍♂️ <strong>일반인:</strong> 기본 시설 예약 서비스 이용</p>
+          </div>
         </div>
       </form>
     </AuthLayout>

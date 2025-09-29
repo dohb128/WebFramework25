@@ -1,18 +1,15 @@
 export type UserRole = 'civilian' | 'athlete' | 'coach' | 'admin';
 
-export interface User {
-  id: string;
-  email: string;
+// DB 기반 사용자 프로필
+export interface Profile {
+  user_id: string;
   name: string;
-  role: UserRole;
-  profileImage?: string;
-  createdAt: string;
+  role: string;
 }
 
 export interface AuthState {
-  user: User | null;
-  isLoading: boolean;
   isAuthenticated: boolean;
+  isLoading: boolean;
 }
 
 export interface LoginCredentials {
@@ -23,7 +20,6 @@ export interface LoginCredentials {
 export interface RegisterData {
   email: string;
   password: string;
-  confirmPassword: string;
   name: string;
-  role: UserRole;
+  role: string;
 }

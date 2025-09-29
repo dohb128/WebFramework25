@@ -127,7 +127,19 @@ export function HomePage({ onNavigate }: HomePageProps) {
       <div className="bg-blue-500 text-white p-8 rounded-lg">
         <div className="max-w-4xl">
           <p className="text-xl opacity-90 mb-6">효율적인 시설 관리와 스마트한 예약 서비스를 제공합니다</p>
-          <div className="flex gap-4">
+          <div className="flex flex-wrap gap-4">
+            <Button
+              onClick={() => onNavigate("login")}
+              className="bg-white text-gray-900 font-bold hover:bg-gray-200"
+            >
+              로그인
+            </Button>
+            <Button
+              onClick={() => onNavigate("register")}
+              className="bg-white text-gray-900 font-bold hover:bg-gray-200"
+            >
+              회원가입
+            </Button>
             <Button
               onClick={() => onNavigate("facility-reservation")}  className="bg-white text-gray-900 font-bold hover:bg-gray-200">
               시설 예약하기

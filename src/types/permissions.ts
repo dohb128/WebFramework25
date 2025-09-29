@@ -1,4 +1,4 @@
-import { UserRole } from './auth';
+import type { UserRole } from './auth';
 
 export type Permission = 
   | 'view_home'

@@ -4,6 +4,9 @@ import { HomePage } from "./components/home/HomePage";
 import FacilityReservation from "./components/facility/FacilityReservation.tsx";
 import { VehicleDispatch } from "./components/vehicle/VehicleDispatch";
 import { StatsCharts } from "./components/dashboard/StatsCharts";
+import { LoginPage } from "./components/auth/LoginPage.tsx";
+import { RegisterPage } from "./components/auth/RegisterPage.tsx";
+import { MyPage } from "./components/profile/MyPage.tsx";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("home");
@@ -12,12 +15,19 @@ export default function App() {
     switch (activeTab) {
       case "home":
         return <HomePage onNavigate={setActiveTab} />;
+      case "login":
+        return <LoginPage onNavigate={setActiveTab} />;
+      case "register":
+        return <RegisterPage onNavigate={setActiveTab} />;
       case "facility-reservation":
         return <FacilityReservation />;
       case "vehicle-dispatch":
         return <VehicleDispatch />;
       case "dashboard":
         return <StatsCharts />;
+      case "my-page":
+        return <MyPage />;
+
       default:
         return <HomePage onNavigate={setActiveTab} />;
     }

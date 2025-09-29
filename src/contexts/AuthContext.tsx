@@ -1,41 +1,70 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
-import type { User, AuthState, LoginCredentials, RegisterData } from '../types/auth';
-import { supabase } from '../utils/supabase/client';
-import { projectId, publicAnonKey } from '../utils/supabase/info';
+import { useState, useEffect, type ReactNode } from "react";
+import { supabase } from "../utils/supabase/client";
+import type { User as SupabaseUser } from "@supabase/supabase-js";
+import type { Profile, LoginCredentials, RegisterData } from "../types/auth";
+import { AuthContext } from "./AuthContextObject";
+import type { AuthContextType } from "./AuthContextObject"; // ✅ type-only import
 
-interface AuthContextType extends AuthState {
-  login: (credentials: LoginCredentials) => Promise<boolean>;
-  register: (data: RegisterData) => Promise<boolean>;
-  logout: () => void;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Supabase User → DB Profile 변환
+  const fetchUserProfile = async (
+    supabaseUser: SupabaseUser
+  ): Promise<Profile | null> => {
+    const { data: profile, error: profileError } = await supabase
+      .from("users")
+      .select(
+        `
+        user_id,
+        name,
+        roles ( role_name )
+        `
+      )
+      .eq("user_id", supabaseUser.id)
+      .single();
+
+    if (profileError || !profile) {
+      console.error("Error fetching user profile:", profileError);
+      return null;
+    }
+
+    const rolesData = profile.roles as { role_name: string }[] | { role_name: string } | null;
+
+    let roleName: string | null = null;
+    if (Array.isArray(rolesData)) {
+      roleName = rolesData.length > 0 ? rolesData[0].role_name : null;
+    } else if (rolesData) {
+      roleName = (rolesData as { role_name: string }).role_name;
+    }
+
+    if (!roleName) {
+      console.error("User role not found");
+      return null;
+    }
+
+    return {
+      user_id: profile.user_id,
+      name: profile.name,
+      role: roleName,
+    };
+  };
+
+  // 세션 확인 + 구독
   useEffect(() => {
-    // Check for existing session
     const checkSession = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
         if (session?.user) {
-          // Fetch user profile from server
-          const response = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-270b10a4/auth/profile`, {
-            headers: {
-              'Authorization': `Bearer ${session.access_token}`,
-            },
-          });
-          
-          if (response.ok) {
-            const { user: userData } = await response.json();
-            setUser(userData);
-          }
+          const profile = await fetchUserProfile(session.user);
+          setUser(profile);
         }
       } catch (error) {
-        console.error('Session check error:', error);
+        console.error("Session check error:", error);
       } finally {
         setIsLoading(false);
       }
@@ -43,105 +72,72 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     checkSession();
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: any, session: any) => {
-      if (event === 'SIGNED_OUT' || !session) {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!session?.user) {
         setUser(null);
-      } else if (session?.user) {
-        // Fetch user profile when signed in
-        try {
-          const response = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-270b10a4/auth/profile`, {
-            headers: {
-              'Authorization': `Bearer ${session.access_token}`,
-            },
-          });
-          
-          if (response.ok) {
-            const { user: userData } = await response.json();
-            setUser(userData);
-          }
-        } catch (error) {
-          console.error('Profile fetch error:', error);
-        }
+      } else {
+        const profile = await fetchUserProfile(session.user);
+        setUser(profile);
       }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
+  // 로그인
   const login = async (credentials: LoginCredentials): Promise<boolean> => {
     setIsLoading(true);
-    
     try {
       const { error } = await supabase.auth.signInWithPassword({
         email: credentials.email,
         password: credentials.password,
       });
-
-      if (error) {
-        console.error('Login error:', error.message);
-        setIsLoading(false);
-        return false;
-      }
-
-      // User profile will be fetched in the auth state change listener
-      setIsLoading(false);
+      if (error) throw error;
       return true;
     } catch (error) {
-      console.error('Login error:', error);
-      setIsLoading(false);
+      console.error("Login error:", error);
       return false;
+    } finally {
+      setIsLoading(false);
     }
   };
 
+  // 회원가입
   const register = async (data: RegisterData): Promise<boolean> => {
-    setIsLoading(true);
-    
-    try {
-      // Register user through our server endpoint
-      const response = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-270b10a4/auth/signup`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${publicAnonKey}`,
-        },
-        body: JSON.stringify({
-          email: data.email,
-          password: data.password,
+  setIsLoading(true);
+  try {
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email: data.email.trim(),
+      password: data.password,
+      options: {
+        data: {
           name: data.name,
-          role: data.role,
-        }),
-      });
+          role: data.role,   // roles 테이블 매핑에 사용됨
+          org_id: 1,         // 기본 조직 ID (필요 시 UI에서 선택 가능)
+          status: "ACTIVE",  // 초기 상태
+        },
+      },
+    });
 
-      const result = await response.json();
+    if (signUpError) throw signUpError;
+    if (!signUpData.user?.id) throw new Error("Auth 사용자 ID 생성 실패");
 
-      if (!response.ok) {
-        console.error('Registration error:', result.error);
-        setIsLoading(false);
-        return false;
-      }
+    // ✅ 여기서는 public.users insert를 직접 하지 않습니다.
+    // 트리거 sync_user_profile()이 auth.users -> public.users를 자동 동기화합니다.
 
-      // After successful registration, sign in the user
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: data.email,
-        password: data.password,
-      });
+    return true;
+  } catch (error) {
+    console.error("Registration error:", error);
+    return false;
+  } finally {
+    setIsLoading(false);
+  }
+};
 
-      if (signInError) {
-        console.error('Auto sign-in error after registration:', signInError.message);
-        setIsLoading(false);
-        return false;
-      }
 
-      setIsLoading(false);
-      return true;
-    } catch (error) {
-      console.error('Registration error:', error);
-      setIsLoading(false);
-      return false;
-    }
-  };
-
+  // 로그아웃
   const logout = async () => {
     await supabase.auth.signOut();
     setUser(null);
@@ -157,16 +153,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
+    <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
   );
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
 }

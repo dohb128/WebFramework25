@@ -1,8 +1,15 @@
 import { Button } from "../ui/button";
 import { cn } from "../ui/utils";
-import { LogIn, UserPlus, Menu } from "lucide-react";
+import {
+  LogIn,
+  UserPlus,
+  Menu,
+  User as UserIcon,
+  LogOut,
+} from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "../ui/sheet";
 import { useState } from "react";
+import { useAuth } from "../../contexts/useAuth";
 
 interface TopNavigationProps {
   activeTab: string;
@@ -18,14 +25,15 @@ const navigationItems = [
 
 export function TopNavigation({ activeTab, onTabChange }: TopNavigationProps) {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const { isAuthenticated, logout } = useAuth();
 
   const handleLogin = () => {
-    console.log("로그인 버튼 클릭됨");
+    onTabChange("login");
     setIsSheetOpen(false);
   };
 
   const handleRegister = () => {
-    console.log("회원가입 버튼 클릭됨");
+    onTabChange("register");
     setIsSheetOpen(false);
   };
 
@@ -34,18 +42,28 @@ export function TopNavigation({ activeTab, onTabChange }: TopNavigationProps) {
     setIsSheetOpen(false);
   };
 
+  const handleLogout = async () => {
+    await logout();
+    setIsSheetOpen(false);
+    onTabChange("home");
+  };
+
+  const handleMyPage = () => {
+    setIsSheetOpen(false);
+    onTabChange("my-page");
+  };
+
   return (
     <nav className="bg-white border-b w-full">
-      {/* 여기서 max-w 제한 제거, 항상 full-width */}
       <div className="px-6 py-4 flex items-center justify-between w-full">
-        {/* 왼쪽: 로고 */}
+        {/* 왼쪽 로고 */}
         <div className="flex-shrink-0">
           <h1 className="text-left text-lg font-bold text-primary">
             국가대표선수촌 예약관리시스템
           </h1>
         </div>
 
-        {/* 오른쪽: 메뉴 + 로그인 */}
+        {/* 데스크탑 메뉴 */}
         <div className="hidden md:flex items-center space-x-6">
           <div className="flex space-x-1">
             {navigationItems.map((item) => (
@@ -66,25 +84,51 @@ export function TopNavigation({ activeTab, onTabChange }: TopNavigationProps) {
             ))}
           </div>
 
+          {/* 인증 상태 */}
           <div className="flex items-center space-x-2 ml-6">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleLogin}
-              className="flex items-center gap-2"
-            >
-              <LogIn className="text-sm h-4 w-4" />
-              로그인
-            </Button>
-            <Button
-              variant="default"
-              size="sm"
-              onClick={handleRegister}
-              className="flex items-center gap-2"
-            >
-              <UserPlus className="h-4 w-4" />
-              회원가입
-            </Button>
+            {!isAuthenticated ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleLogin}
+                  className="flex items-center gap-2"
+                >
+                  <LogIn className="text-sm h-4 w-4" />
+                  로그인
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleRegister}
+                  className="flex items-center gap-2"
+                >
+                  <UserPlus className="h-4 w-4" />
+                  회원가입
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleMyPage}
+                  className="flex items-center gap-2"
+                >
+                  <UserIcon className="h-4 w-4" />
+                  마이페이지
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleLogout}
+                  className="flex items-center gap-2"
+                >
+                  <LogOut className="h-4 w-4" />
+                  로그아웃
+                </Button>
+              </>
+            )}
           </div>
         </div>
 
@@ -108,23 +152,47 @@ export function TopNavigation({ activeTab, onTabChange }: TopNavigationProps) {
                     {item.label}
                   </Button>
                 ))}
+
                 <div className="border-t pt-4 mt-4 flex flex-col gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={handleLogin}
-                    className="w-full justify-start"
-                  >
-                    <LogIn className="mr-2 h-4 w-4" />
-                    로그인
-                  </Button>
-                  <Button
-                    variant="default"
-                    onClick={handleRegister}
-                    className="w-full justify-start"
-                  >
-                    <UserPlus className="mr-2 h-4 w-4" />
-                    회원가입
-                  </Button>
+                  {!isAuthenticated ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={handleLogin}
+                        className="w-full justify-start"
+                      >
+                        <LogIn className="mr-2 h-4 w-4" />
+                        로그인
+                      </Button>
+                      <Button
+                        variant="default"
+                        onClick={handleRegister}
+                        className="w-full justify-start"
+                      >
+                        <UserPlus className="mr-2 h-4 w-4" />
+                        회원가입
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button
+                        variant="ghost"
+                        onClick={handleMyPage}
+                        className="w-full justify-start"
+                      >
+                        <UserIcon className="mr-2 h-4 w-4" />
+                        마이페이지
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={handleLogout}
+                        className="w-full justify-start"
+                      >
+                        <LogOut className="mr-2 h-4 w-4" />
+                        로그아웃
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
             </SheetContent>
