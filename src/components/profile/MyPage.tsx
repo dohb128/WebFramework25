@@ -3,6 +3,22 @@ import { useAuth } from "../../contexts/useAuth";
 export function MyPage() {
   const { user } = useAuth();
 
+  const getRoleName = (role: number | string) => {
+    const roleNumber = typeof role === 'string' ? parseInt(role, 10) : role;
+    switch (roleNumber) {
+      case 1:
+        return "선수";
+      case 2:
+        return "코치";
+      case 3:
+        return "관리자";
+      case 4:
+        return "일반인";
+      default:
+        return "알 수 없음";
+    }
+  };
+
   if (!user) {
     return (
       <div className="rounded-md border p-6 bg-white text-center">
@@ -26,7 +42,7 @@ export function MyPage() {
         </p>
         <p>
           <span className="font-medium text-muted-foreground">역할</span>{" "}
-          {user.role}
+          {getRoleName(user.roleId)}
         </p>
         <p className="text-sm text-muted-foreground break-all">
           User ID: {user.user_id}

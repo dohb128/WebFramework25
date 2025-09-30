@@ -1,36 +1,45 @@
-import { useAuth } from '../contexts/useAuth';
+﻿import { useAuth } from '../contexts/useAuth';
 import type { Permission, NavigationItem, FacilityType } from '../types/permissions';
 import { ROLE_PERMISSIONS, NAVIGATION_PERMISSIONS, FACILITY_ACCESS } from '../types/permissions';
+import type { UserRole } from '../types/auth';
+
+const ROLE_ID_TO_ROLE: Record<number, UserRole> = {
+  1: 'athlete',
+  2: 'coach',
+  3: 'admin',
+  4: 'civilian',
+};
 
 export function usePermissions() {
   const { user } = useAuth();
+  const roleKey = user ? ROLE_ID_TO_ROLE[user.roleId] ?? null : null;
 
   const hasPermission = (permission: Permission): boolean => {
-    if (!user) return false;
-    return ROLE_PERMISSIONS[user.role].includes(permission);
+    if (!roleKey) return false;
+    return ROLE_PERMISSIONS[roleKey].includes(permission);
   };
 
   const canAccessNavigation = (navItem: NavigationItem): boolean => {
-    if (!user) return false;
+    if (!roleKey) return false;
     const requiredPermission = NAVIGATION_PERMISSIONS[navItem];
     return hasPermission(requiredPermission);
   };
 
   const canAccessFacility = (facilityType: FacilityType): boolean => {
-    if (!user) return false;
-    return FACILITY_ACCESS[user.role].includes(facilityType);
+    if (!roleKey) return false;
+    return FACILITY_ACCESS[roleKey].includes(facilityType);
   };
 
   const getAccessibleNavigationItems = (): NavigationItem[] => {
-    if (!user) return [];
-    
+    if (!roleKey) return [];
+
     const items: NavigationItem[] = ['home', 'facility-reservation', 'vehicle-dispatch', 'dashboard'];
     return items.filter(item => canAccessNavigation(item));
   };
 
   const getAccessibleFacilities = (): FacilityType[] => {
-    if (!user) return [];
-    return FACILITY_ACCESS[user.role];
+    if (!roleKey) return [];
+    return FACILITY_ACCESS[roleKey];
   };
 
   return {
@@ -39,6 +48,6 @@ export function usePermissions() {
     canAccessFacility,
     getAccessibleNavigationItems,
     getAccessibleFacilities,
-    userRole: user?.role,
+    userRole: roleKey,
   };
 }

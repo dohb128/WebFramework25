@@ -1,64 +1,50 @@
-import { useState, useEffect, type ReactNode } from "react";
+﻿import { useState, useEffect, type ReactNode } from "react";
 import { supabase } from "../utils/supabase/client";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
-import type { Profile, LoginCredentials, RegisterData } from "../types/auth";
+import type { Profile, LoginCredentials, RegisterData, UserRole } from "../types/auth";
 import { AuthContext } from "./AuthContextObject";
-import type { AuthContextType } from "./AuthContextObject"; // ✅ type-only import
+import type { AuthContextType } from "./AuthContextObject";
 
+const ROLE_NAME_TO_ID: Record<UserRole, number> = {
+  athlete: 1,
+  coach: 2,
+  admin: 3,
+  civilian: 4,
+};
+
+// Supabase User → DB Profile 변환
+async function fetchUserProfile(
+  supabaseUser: SupabaseUser
+): Promise<Profile | null> {
+  const { data: profile, error } = await supabase
+    .from("users")
+    .select("user_id, name, role_id")
+    .eq("user_id", supabaseUser.id)
+    .single();
+
+  if (error || !profile) {
+    console.error("Error fetching user profile:", error);
+    return null;
+  }
+
+  return {
+    user_id: profile.user_id,
+    name: profile.name,
+    roleId: profile.role_id,
+  };
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Supabase User → DB Profile 변환
-  const fetchUserProfile = async (
-    supabaseUser: SupabaseUser
-  ): Promise<Profile | null> => {
-    const { data: profile, error: profileError } = await supabase
-      .from("users")
-      .select(
-        `
-        user_id,
-        name,
-        roles ( role_name )
-        `
-      )
-      .eq("user_id", supabaseUser.id)
-      .single();
-
-    if (profileError || !profile) {
-      console.error("Error fetching user profile:", profileError);
-      return null;
-    }
-
-    const rolesData = profile.roles as { role_name: string }[] | { role_name: string } | null;
-
-    let roleName: string | null = null;
-    if (Array.isArray(rolesData)) {
-      roleName = rolesData.length > 0 ? rolesData[0].role_name : null;
-    } else if (rolesData) {
-      roleName = (rolesData as { role_name: string }).role_name;
-    }
-
-    if (!roleName) {
-      console.error("User role not found");
-      return null;
-    }
-
-    return {
-      user_id: profile.user_id,
-      name: profile.name,
-      role: roleName,
-    };
-  };
-
-  // 세션 확인 + 구독
   useEffect(() => {
     const checkSession = async () => {
       try {
         const {
           data: { session },
         } = await supabase.auth.getSession();
+
         if (session?.user) {
           const profile = await fetchUserProfile(session.user);
           setUser(profile);
@@ -77,16 +63,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (!session?.user) {
         setUser(null);
-      } else {
-        const profile = await fetchUserProfile(session.user);
-        setUser(profile);
+        return;
       }
+
+      const profile = await fetchUserProfile(session.user);
+      setUser(profile);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
-  // 로그인
   const login = async (credentials: LoginCredentials): Promise<boolean> => {
     setIsLoading(true);
     try {
@@ -94,6 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: credentials.email,
         password: credentials.password,
       });
+
       if (error) throw error;
       return true;
     } catch (error) {
@@ -104,40 +93,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // 회원가입
   const register = async (data: RegisterData): Promise<boolean> => {
-  setIsLoading(true);
-  try {
-    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-      email: data.email.trim(),
-      password: data.password,
-      options: {
-        data: {
-          name: data.name,
-          role: data.role,   // roles 테이블 매핑에 사용됨
-          org_id: 1,         // 기본 조직 ID (필요 시 UI에서 선택 가능)
-          status: "ACTIVE",  // 초기 상태
-        },
-      },
-    });
+    setIsLoading(true);
+    try {
+      const { data: signUpData, error: signUpError } =
+        await supabase.auth.signUp({
+          email: data.email.trim(),
+          password: data.password,
+          options: {
+            data: {
+              name: data.name,
+              role: data.role,
+              org_id: 1,
+              status: "ACTIVE",
+            },
+          },
+        });
 
-    if (signUpError) throw signUpError;
-    if (!signUpData.user?.id) throw new Error("Auth 사용자 ID 생성 실패");
+      if (signUpError) throw signUpError;
+      if (!signUpData.user?.id) throw new Error("Auth user id is missing after sign up");
 
-    // ✅ 여기서는 public.users insert를 직접 하지 않습니다.
-    // 트리거 sync_user_profile()이 auth.users -> public.users를 자동 동기화합니다.
+      const roleId = ROLE_NAME_TO_ID[data.role];
 
-    return true;
-  } catch (error) {
-    console.error("Registration error:", error);
-    return false;
-  } finally {
-    setIsLoading(false);
-  }
-};
+      const { error: profileError } = await supabase
+        .from("users")
+        .upsert(
+          {
+            user_id: signUpData.user.id,
+            name: data.name,
+            role_id: roleId,
+          },
+          { onConflict: "user_id" }
+        );
 
+      if (profileError) throw profileError;
 
-  // 로그아웃
+      return true;
+    } catch (error) {
+      console.error("Registration error:", error);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const logout = async () => {
     await supabase.auth.signOut();
     setUser(null);
@@ -146,13 +145,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value: AuthContextType = {
     user,
     isLoading,
-    isAuthenticated: !!user,
+    isAuthenticated: Boolean(user),
     login,
     register,
     logout,
   };
 
-  return (
-    <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

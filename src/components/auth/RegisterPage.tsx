@@ -17,41 +17,38 @@ interface RegisterPageProps {
 export function RegisterPage({ onNavigate }: RegisterPageProps) {
   const { register, isLoading } = useAuth();
   const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-    confirmPassword: '',
-    name: '',
-    role: '' as UserRole | '',
+    email: "",
+    password: "",
+    confirmPassword: "",
+    name: "",
+    role: "" as UserRole | "",
   });
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
 
-    // Validation
-    if (!formData.email || !formData.password || !formData.confirmPassword || !formData.name || !formData.role) {
-      setError('모든 필드를 입력해주세요.');
+    if (
+      !formData.email ||
+      !formData.password ||
+      !formData.confirmPassword ||
+      !formData.name ||
+      !formData.role
+    ) {
+      setError("모든 필드를 입력해주세요.");
       return;
     }
 
     if (formData.password !== formData.confirmPassword) {
-      setError('비밀번호가 일치하지 않습니다.');
+      setError("비밀번호가 일치하지 않습니다.");
       return;
     }
 
     if (formData.password.length < 6) {
-      setError('비밀번호는 최소 6자 이상이어야 합니다.');
-      return;
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(formData.email)) {
-      setError('올바른 이메일 형식을 입력해주세요.');
+      setError("비밀번호는 최소 6자 이상이어야 합니다.");
       return;
     }
 
@@ -61,20 +58,21 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
     });
 
     if (!success) {
-      setError('회원가입에 실패했습니다. 이미 등록된 이메일일 수 있습니다.');
+      setError("회원가입에 실패했습니다. 이미 등록된 이메일일 수 있습니다.");
     }
   };
 
   const handleChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    const cleanValue = field === "email" ? value.trim() : value;
+    setFormData((prev) => ({ ...prev, [field]: cleanValue }));
   };
 
   return (
-    <AuthLayout 
-      title="회원가입" 
+    <AuthLayout
+      title="회원가입"
       subtitle="새 계정을 만들어 시설 예약 시스템을 이용하세요"
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-6 max-w-md mx-auto">
         {error && (
           <Alert className="border-destructive bg-destructive/10">
             <AlertDescription className="text-destructive">
@@ -82,7 +80,7 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
             </AlertDescription>
           </Alert>
         )}
-
+        {/* 이름 */}
         <div className="space-y-2">
           <Label htmlFor="name">이름</Label>
           <Input
@@ -90,12 +88,12 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
             type="text"
             placeholder="이름을 입력하세요"
             value={formData.name}
-            onChange={(e) => handleChange('name', e.target.value)}
+            onChange={(e) => handleChange("name", e.target.value)}
             disabled={isLoading}
-            className="bg-input-background"
+            className="bg-gray-50 border rounded-md"
           />
         </div>
-
+        {/* 이메일 */}
         <div className="space-y-2">
           <Label htmlFor="email">이메일</Label>
           <Input
@@ -103,20 +101,20 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
             type="email"
             placeholder="이메일을 입력하세요"
             value={formData.email}
-            onChange={(e) => handleChange('email', e.target.value)}
+            onChange={(e) => handleChange("email", e.target.value)}
             disabled={isLoading}
-            className="bg-input-background"
+            className="bg-gray-50 border rounded-md"
           />
         </div>
-
+        {/* 역할 */}
         <div className="space-y-2">
           <Label htmlFor="role">역할</Label>
           <Select
             value={formData.role}
-            onValueChange={(value) => handleChange('role', value)}
+            onValueChange={(value) => handleChange("role", value)}
             disabled={isLoading}
           >
-            <SelectTrigger className="bg-input-background">
+            <SelectTrigger className="bg-gray-50 border rounded-md">
               <SelectValue placeholder="역할을 선택하세요" />
             </SelectTrigger>
             <SelectContent className="bg-white border rounded-md shadow-md">
@@ -127,18 +125,18 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
             </SelectContent>
           </Select>
         </div>
-
+        {/* 비밀번호 */}
         <div className="space-y-2">
           <Label htmlFor="password">비밀번호</Label>
           <div className="relative">
             <Input
               id="password"
-              type={showPassword ? 'text' : 'password'}
+              type={showPassword ? "text" : "password"}
               placeholder="비밀번호를 입력하세요 (최소 6자)"
               value={formData.password}
-              onChange={(e) => handleChange('password', e.target.value)}
+              onChange={(e) => handleChange("password", e.target.value)}
               disabled={isLoading}
-              className="bg-input-background pr-10"
+              className="bg-gray-50 border rounded-md pr-10"
             />
             <Button
               type="button"
@@ -156,25 +154,27 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
             </Button>
           </div>
         </div>
-
+        {/* 비밀번호 확인 */}
         <div className="space-y-2">
           <Label htmlFor="confirmPassword">비밀번호 확인</Label>
           <div className="relative">
             <Input
               id="confirmPassword"
-              type={showConfirmPassword ? 'text' : 'password'}
+              type={showConfirmPassword ? "text" : "password"}
               placeholder="비밀번호를 다시 입력하세요"
               value={formData.confirmPassword}
-              onChange={(e) => handleChange('confirmPassword', e.target.value)}
+              onChange={(e) => handleChange("confirmPassword", e.target.value)}
               disabled={isLoading}
-              className="bg-input-background pr-10"
+              className="bg-gray-50 border rounded-md pr-10"
             />
             <Button
               type="button"
               variant="ghost"
               size="sm"
               className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
-              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+              onClick={() =>
+                setShowConfirmPassword(!showConfirmPassword)
+              }
               disabled={isLoading}
             >
               {showConfirmPassword ? (
@@ -185,10 +185,10 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
             </Button>
           </div>
         </div>
-
+        {/* 제출 버튼 */}
         <Button
           type="submit"
-          className="w-full"
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white"
           disabled={isLoading}
         >
           {isLoading ? (
@@ -197,28 +197,30 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
               회원가입 중...
             </>
           ) : (
-            '회원가입'
+            "회원가입"
           )}
         </Button>
-
+        {/* 로그인 링크 */}
         <div className="text-center">
-          <p className="text-sm text-muted-foreground">
-            이미 계정이 있으신가요?{' '}
+          <p className="text-sm text-gray-600">
+            이미 계정이 있으신가요?{" "}
             <Button
               type="button"
               variant="link"
-              className="p-0 h-auto text-primary"
-              onClick={() => onNavigate('login')}
+              className="p-0 h-auto text-blue-600 hover:underline"
+              onClick={() => onNavigate("login")}
               disabled={isLoading}
             >
               로그인
             </Button>
           </p>
         </div>
-
-        <div className="mt-6 p-4 bg-primary/10 rounded-md border border-primary/20">
-          <h4 className="font-medium mb-3 text-primary">📋 역할별 권한 안내</h4>
-          <div className="text-sm text-muted-foreground space-y-2">
+        {/* 안내 박스 */}
+        <div className="mt-6 p-4 bg-green-50 rounded-md border border-green-200">
+          <h4 className="font-medium mb-3 text-green-700">
+            📋 역할별 권한 안내
+          </h4>
+          <div className="text-sm text-gray-600 space-y-2">
             <p>• 🥇 <strong>선수:</strong> 모든 시설 예약 및 차량 배차 이용 가능</p>
             <p>• 👨‍🏫 <strong>코치:</strong> 팀 시설 예약 관리 및 선수 지원</p>
             <p>• ⚙️ <strong>관리자:</strong> 전체 시스템 관리 및 통계 확인</p>

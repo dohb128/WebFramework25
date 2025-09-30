@@ -46,7 +46,7 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
       title="로그인"
       subtitle="시설 예약 시스템에 로그인하세요"
     >
-      <form onSubmit={handleSubmit} className="space-y-6 max-w-md mx-auto">
+      <form onSubmit={handleSubmit} className="space-y-6 w-[448px] max-w-xl mx-auto">
         {error && (
           <Alert className="border-destructive bg-destructive/10">
             <AlertDescription className="text-destructive">
@@ -143,11 +143,6 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
           </div>
         </div>
       </form>
-
-      {/* 하단 설명 */}
-      <div className="mt-8 text-center text-sm text-gray-500">
-        효율적인 시설 관리와 스마트한 예약 서비스를 제공합니다
-      </div>
     </AuthLayout>
   );
 }
