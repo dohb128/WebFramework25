@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../utils/supabase/client";
-import { Card } from "../ui/card";
-import { Loader2 } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Badge } from "../ui/badge";
+import { Loader2, MapPin, Users } from "lucide-react";
 
-// ✅ 다른 컴포넌트에서도 쓰일 수 있도록 export
-export type Facility = {
+export interface Facility {
   facility_id: number;
   code: string;
   name: string;
@@ -12,85 +14,167 @@ export type Facility = {
   capacity: number;
   location: string;
   is_active: boolean;
-  created_at?: string;
-};
-
-// ✅ props 타입 정의
-interface FacilityReservationProps {
-  onSelectFacility: (facility: Facility) => void;
 }
 
-const FacilityReservation = ({ onSelectFacility }: FacilityReservationProps) => {
+interface FacilityReservationProps {
+  onSelectFacility?: (facility: Facility) => void;
+}
+
+export default function FacilityReservation({
+  onSelectFacility,
+}: FacilityReservationProps) {
   const [facilities, setFacilities] = useState<Facility[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [onlyActive, setOnlyActive] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let isMounted = true;
+
     const fetchFacilities = async () => {
       setLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from("facilities")
-          .select(
-            "facility_id, code, name, category, capacity, location, is_active, created_at"
-          )
-          .order("name");
+      setError(null);
 
-        if (error) {
-          console.error("시설 불러오기 실패:", error.message);
-        } else {
-          setFacilities(data || []);
-        }
-      } catch (err) {
-        console.error("알 수 없는 오류:", err);
-      } finally {
-        setLoading(false); // ✅ 무조건 로딩 해제
+      const { data, error: fetchError } = await supabase
+        .from("facilities")
+        .select("facility_id, code, name, category, capacity, location, is_active")
+        .order("name", { ascending: true });
+
+      if (!isMounted) {
+        return;
       }
+
+      if (fetchError) {
+        console.error("Failed to load facilities", fetchError);
+        setError("Failed to load facilities. Please try again.");
+        setFacilities([]);
+      } else {
+        setFacilities(data ?? []);
+      }
+
+      setLoading(false);
     };
 
     fetchFacilities();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
+
+  const filteredFacilities = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    return facilities.filter((facility) => {
+      const matchesSearch = term
+        ? facility.name.toLowerCase().includes(term) ||
+          facility.code.toLowerCase().includes(term)
+        : true;
+
+      const matchesStatus = onlyActive ? facility.is_active : true;
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [facilities, searchTerm, onlyActive]);
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-40">
-        <Loader2 className="h-6 w-6 animate-spin text-gray-500" />
+      <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+        <Loader2 className="h-8 w-8 animate-spin" />
+        <p className="mt-4 text-sm">Loading facilities...</p>
       </div>
     );
   }
 
-  if (facilities.length === 0) {
+  if (error) {
     return (
-      <div className="p-6 text-center text-gray-500 border rounded-md bg-white">
-        등록된 시설이 없습니다.
+      <div className="rounded-md border border-destructive bg-destructive/10 p-6 text-center text-destructive">
+        {error}
+      </div>
+    );
+  }
+
+  if (filteredFacilities.length === 0) {
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <Input
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Search facility name or code"
+            className="max-w-xs"
+          />
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={onlyActive}
+              onChange={(event) => setOnlyActive(event.target.checked)}
+            />
+            Show active facilities only
+          </label>
+        </div>
+        <div className="rounded-md border bg-white p-6 text-center text-muted-foreground">
+          No facilities found.
+        </div>
       </div>
     );
   }
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold mb-6">시설 목록</h1>
+    <div className="space-y-6">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <Input
+          value={searchTerm}
+          onChange={(event) => setSearchTerm(event.target.value)}
+          placeholder="Search facility name or code"
+          className="max-w-xs"
+        />
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={onlyActive}
+            onChange={(event) => setOnlyActive(event.target.checked)}
+          />
+          Show active facilities only
+        </label>
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {facilities.map((facility) => (
+        {filteredFacilities.map((facility) => (
           <Card
             key={facility.facility_id}
-            className="p-4 hover:shadow-md transition rounded-lg border bg-white cursor-pointer"
-            onClick={() => onSelectFacility(facility)} // ✅ 카드 클릭 시 전달
+            className="p-4 shadow-sm transition hover:shadow-md"
           >
-            <h3 className="font-semibold text-lg">{facility.name}</h3>
-            <p className="text-sm text-gray-600">코드: {facility.code}</p>
-            <p className="text-sm text-gray-600">종류: {facility.category}</p>
-            <p className="text-sm text-gray-600">
-              수용 인원: {facility.capacity}명
-            </p>
-            <p className="text-sm text-gray-500">위치: {facility.location}</p>
-            {!facility.is_active && (
-              <p className="text-sm text-red-600 font-medium">[비활성화됨]</p>
+            <CardHeader className="p-0">
+              <Badge variant={facility.is_active ? "secondary" : "outline"}>
+                {facility.is_active ? "Active" : "Inactive"}
+              </Badge>
+              <CardTitle className="mt-2 text-lg">{facility.name}</CardTitle>
+            </CardHeader>
+            <CardContent className="mt-4 grid gap-2 p-0 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                <span>Capacity: {facility.capacity}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <MapPin className="h-4 w-4" />
+                <span>{facility.location}</span>
+              </div>
+              <div>Category: {facility.category}</div>
+              <div>Code: {facility.code}</div>
+            </CardContent>
+            {onSelectFacility && (
+              <Button
+                className="mt-4 w-full"
+                disabled={!facility.is_active}
+                onClick={() => onSelectFacility(facility)}
+              >
+                {facility.is_active ? "Reserve" : "Unavailable"}
+              </Button>
             )}
           </Card>
         ))}
       </div>
     </div>
   );
-};
-
-export default FacilityReservation;
+}

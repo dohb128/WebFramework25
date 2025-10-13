@@ -1,6 +1,4 @@
-﻿//import type { User } from "@supabase/supabase-js";
-
-export type UserRole = 'civilian' | 'athlete' | 'coach' | 'admin';
+﻿export type UserRole = 'civilian' | 'athlete' | 'coach' | 'admin';
 
 export interface Profile {
   user_id: string;
@@ -22,5 +20,5 @@ export interface RegisterData {
   email: string;
   password: string;
   name: string;
-  role: UserRole;   // ✅ roleId → role (문자열)
+  role: UserRole;
 }
