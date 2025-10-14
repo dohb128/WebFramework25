@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog";
 import { Eye, Filter } from "lucide-react";
+import { supabase } from "../../utils/supabase/client";
 
 interface Booking {
   id: string;
@@ -22,73 +23,102 @@ interface Booking {
   createdAt: string;
 }
 
-const mockBookings: Booking[] = [
-  {
-    id: "BK-001",
-    facilityName: "Pool A",
-    requester: "Kim Seungho",
-    role: "Athlete",
-    date: "2024-12-20",
-    startTime: "09:00",
-    endTime: "11:00",
-    status: "confirmed",
-    purpose: "Training",
-    participants: 1,
-    createdAt: "2024-12-18",
-  },
-  {
-    id: "BK-002",
-    facilityName: "Gym B",
-    requester: "Park Dana",
-    role: "Coach",
-    date: "2024-12-20",
-    startTime: "14:00",
-    endTime: "16:00",
-    status: "pending",
-    purpose: "Team practice",
-    participants: 15,
-    createdAt: "2024-12-19",
-  },
-  {
-    id: "BK-003",
-    facilityName: "Conference Room 1",
-    requester: "Lee Sora",
-    role: "Admin",
-    date: "2024-12-21",
-    startTime: "10:00",
-    endTime: "12:00",
-    status: "confirmed",
-    purpose: "Strategy meeting",
-    participants: 8,
-    createdAt: "2024-12-17",
-  },
-  {
-    id: "BK-004",
-    facilityName: "Outdoor track",
-    requester: "Choi Sunwoo",
-    role: "Athlete",
-    date: "2024-12-22",
-    startTime: "06:00",
-    endTime: "08:00",
-    status: "cancelled",
-    purpose: "Track run",
-    participants: 1,
-    createdAt: "2024-12-16",
-  },
-];
-
 const statusLabels: Record<Booking["status"], string> = {
   confirmed: "bg-green-100 text-green-800",
   pending: "bg-yellow-100 text-yellow-800",
   cancelled: "bg-red-100 text-red-800",
 };
 
+type DbStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED" | "COMPLETED";
+
+const toUiStatus = (s?: DbStatus | null): Booking["status"] => {
+  switch (s) {
+    case "APPROVED":
+    case "COMPLETED":
+      return "confirmed";
+    case "CANCELLED":
+      return "cancelled";
+    case "PENDING":
+    default:
+      return "pending";
+  }
+};
+
 export default function BookingList() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [items, setItems] = useState<Booking[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("reservations")
+          .select("reservation_id, facility_id, title, participants, start_time, end_time, status, created_at")
+          .eq("reservation_type", "TRAINING")
+          .order("start_time", { ascending: false });
+        if (error) throw error;
+        type ReservationRow = {
+          reservation_id: number;
+          facility_id: number | null;
+          title: string | null;
+          participants: number | null;
+          start_time: string | null;
+          end_time: string | null;
+          status: DbStatus | null;
+          created_at: string | null;
+        };
+
+        const rows: ReservationRow[] = (data ?? []) as ReservationRow[];
+
+        const ids = Array.from(
+          new Set(
+            rows
+              .map((r) => r.facility_id)
+              .filter((v): v is number => typeof v === "number")
+          )
+        );
+
+        const nameMap = new Map<number, string>();
+        if (ids.length) {
+          const { data: facs } = await supabase
+            .from("facilities")
+            .select("facility_id, name")
+            .in("facility_id", ids);
+          type FacilityRow = { facility_id: number; name: string | null };
+          const facRows: FacilityRow[] = (facs ?? []) as FacilityRow[];
+          facRows.forEach((f) => nameMap.set(f.facility_id, f.name ?? `Facility #${f.facility_id}`));
+        }
+
+        const mapped: Booking[] = rows.map((r) => ({
+          id: `BK-${r.reservation_id}`,
+          facilityName: nameMap.get(r.facility_id ?? -1) || `Facility #${r.facility_id}`,
+          requester: "-",
+          role: "-",
+          date: r.start_time ? new Date(r.start_time).toLocaleDateString("ko-KR") : "",
+          startTime: r.start_time
+            ? new Date(r.start_time).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })
+            : "",
+          endTime: r.end_time
+            ? new Date(r.end_time).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })
+            : "",
+          status: toUiStatus(r.status ?? undefined),
+          purpose: r.title ?? "-",
+          participants: r.participants ?? 0,
+          createdAt: r.created_at ? new Date(r.created_at).toLocaleDateString("ko-KR") : "",
+        }));
+        if (mounted) setItems(mapped);
+      } catch (e) {
+        console.error("Failed to load facility reservations", e);
+        if (mounted) setItems([]);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   const filtered = useMemo(() => {
-    return mockBookings.filter((booking) => {
+    return items.filter((booking) => {
       const matchesStatus =
         statusFilter === "all" ? true : booking.status === statusFilter;
       const term = search.trim().toLowerCase();
@@ -100,7 +130,7 @@ export default function BookingList() {
 
       return matchesStatus && matchesTerm;
     });
-  }, [statusFilter, search]);
+  }, [statusFilter, search, items]);
 
   return (
     <div className="space-y-6">

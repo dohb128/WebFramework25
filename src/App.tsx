@@ -52,6 +52,11 @@ export default function App() {
         return <MyPage />;
       case "facility-management":
         return <FacilityManagement />;
+      case "vehicle-dispatch-admin":
+        return <VehicleDispatch />;
+      case "facility-registration":
+        // TODO: Implement facility registration page
+        return <FacilityManagement />;
       default:
         return <HomePage onNavigate={setActiveTab} />;
     }

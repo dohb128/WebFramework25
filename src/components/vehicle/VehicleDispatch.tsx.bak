@@ -1,0 +1,389 @@
+import { useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import { Badge } from "../ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
+import { Calendar } from "../ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { Textarea } from "../ui/textarea";
+import { Calendar as CalendarIcon, Clock, Upload, Car, User, Phone, FileText } from "lucide-react";
+import { useAuth } from "../../contexts/useAuth";
+// import { format } from "date-fns";
+// import { ko } from "date-fns/locale";
+
+interface VehicleRequest {
+  id: string;
+  requestId: string;
+  vehicleNumber: string;
+  driverName: string;
+  driverPhone: string;
+  departure: string;
+  destination: string;
+  date: string;
+  time: string;
+  passengers: number;
+  status: "pending" | "approved" | "completed" | "cancelled";
+  purpose: string;
+  requestDate: string;
+}
+
+const mockRequests: VehicleRequest[] = [
+  {
+    id: "1",
+    requestId: "#202509-1",
+    vehicleNumber: "12ê°€3456",
+    driverName: "?ê¸¸??,
+    driverPhone: "010-1234-5678",
+    departure: "êµ???€?œì„ ?˜ì´Œ",
+    destination: "?¬ë¦¼?½ê³µ??,
+    date: "2024-12-20",
+    time: "09:00",
+    passengers: 15,
+    status: "pending",
+    purpose: "?ˆë ¨ ?´ë™",
+    requestDate: "2024-12-18"
+  },
+  {
+    id: "2",
+    requestId: "#202509-2",
+    vehicleNumber: "45??789",
+    driverName: "ê¹€ì² ìˆ˜",
+    driverPhone: "010-9876-5432",
+    departure: "êµ???€?œì„ ?˜ì´Œ",
+    destination: "? ì‹¤ì¢…í•©?´ë™??,
+    date: "2024-12-21",
+    time: "14:00",
+    passengers: 8,
+    status: "approved",
+    purpose: "ê²½ê¸° ì°¸ê?",
+    requestDate: "2024-12-17"
+  },
+  {
+    id: "3",
+    requestId: "#202509-3",
+    vehicleNumber: "78??123",
+    driverName: "ë°•ì˜??,
+    driverPhone: "010-1111-2222",
+    departure: "? ìˆ˜ì´??˜ë¬´??,
+    destination: "?œìš¸?€ë³‘ì›",
+    date: "2024-12-19",
+    time: "10:30",
+    passengers: 2,
+    status: "completed",
+    purpose: "?˜ë£Œì§„ë£Œ",
+    requestDate: "2024-12-16"
+  }
+];
+
+export function VehicleDispatch() {
+  const { user } = useAuth();
+  const [requests, setRequests] = useState<VehicleRequest[]>(mockRequests);
+  const [selectedDate, setSelectedDate] = useState<Date>();
+  const [selectedTime, setSelectedTime] = useState("");
+  const [departure, setDeparture] = useState("");
+  const [destination, setDestination] = useState("");
+  const [passengers, setPassengers] = useState(1);
+  const [purpose, setPurpose] = useState("");
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "pending":
+        return <Badge className="bg-yellow-100 text-yellow-800">?¹ì¸?€ê¸?/Badge>;
+      case "approved":
+        return <Badge className="bg-green-100 text-green-800">?¹ì¸?„ë£Œ</Badge>;
+      case "completed":
+        return <Badge className="bg-blue-100 text-blue-800">?´ìš©?„ë£Œ</Badge>;
+      case "cancelled":
+        return <Badge className="bg-red-100 text-red-800">ì·¨ì†Œ</Badge>;
+      default:
+        return <Badge>?????†ìŒ</Badge>;
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const newRequest: VehicleRequest = {
+      id: String(requests.length + 1),
+      requestId: `#202509-${requests.length + 1}`,
+      vehicleNumber: "ë°°ì°¨ ?€ê¸?,
+      driverName: "ë°°ì • ?ˆì •",
+      driverPhone: "-",
+      departure,
+      destination,
+      date: selectedDate ? selectedDate.toLocaleDateString('ko-KR') : "",
+      time: selectedTime,
+      passengers,
+      status: "pending",
+      purpose,
+      requestDate: new Date().toLocaleDateString('ko-KR')
+    };
+    
+    setRequests([newRequest, ...requests]);
+    
+    // Reset form
+    setSelectedDate(undefined);
+    setSelectedTime("");
+    setDeparture("");
+    setDestination("");
+    setPassengers(1);
+    setPurpose("");
+    setAttachedFile(null);
+  };
+
+  const handleCancel = (id: string) => {
+    setRequests(requests.map(req => 
+      req.id === id ? { ...req, status: "cancelled" as const } : req
+    ));
+  };
+
+  const timeSlots = Array.from({ length: 48 }, (_, i) => {
+    const hour = Math.floor(i / 2)
+      .toString()
+      .padStart(2, "0");
+    const minute = i % 2 === 0 ? "00" : "30";
+    return `${hour}:${minute}`;
+  });
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2>ì°¨ëŸ‰ ë°°ì°¨ ?ˆì•½</h2>
+        <p className="text-muted-foreground">ì°¨ëŸ‰ ë°°ì°¨ë¥??”ì²­?˜ê³  ?„í™©???•ì¸?˜ì„¸??/p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* ë°°ì°¨ ?”ì²­ ??*/}
+        <div className="lg:col-span-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Car className="h-5 w-5" />
+                ë°°ì°¨ ?”ì²­
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="departure">ì¶œë°œì§€</Label>
+                    <Input
+                      className="mt-1"
+                      id="departure"
+                      value={departure}
+                      onChange={(e) => setDeparture(e.target.value)}
+                      placeholder="ì¶œë°œì§€ë¥??…ë ¥?˜ì„¸??
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="destination">?„ì°©ì§€</Label>
+                    <Input
+                      className="mt-1"
+                      id="destination"
+                      value={destination}
+                      onChange={(e) => setDestination(e.target.value)}
+                      placeholder="?„ì°©ì§€ë¥??…ë ¥?˜ì„¸??
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label>? ì§œ</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className="w-full justify-start text-left font-normal"
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {selectedDate ? (
+                            selectedDate.toLocaleDateString('ko-KR')
+                          ) : (
+                            <span>? ì§œë¥?? íƒ?˜ì„¸??/span>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0 bg-white">
+                        <Calendar
+                          mode="single"
+                          selected={selectedDate}
+                          onSelect={setSelectedDate}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <div>
+                    <Label htmlFor="time">?œê°„</Label>
+                    <Select value={selectedTime} onValueChange={setSelectedTime} required>
+                      <SelectTrigger>
+                        <SelectValue placeholder="?œê°„??? íƒ?˜ì„¸?? />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white">
+                        {timeSlots.map(time => (
+                          <SelectItem key={time} value={time}>{time}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="passengers">?‘ìŠ¹?¸ì›</Label>
+                    <Input
+                      className="mt-1"
+                      id="passengers"
+                      type="number"
+                      value={passengers}
+                      onChange={(e) => setPassengers(Number(e.target.value))}
+                      min={1}
+                      max={50}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="file">ë¬¸ì„œì²¨ë?</Label>
+                    <Input
+                      className="mt-1"
+                      id="file"
+                      type="file"
+                      onChange={(e) => setAttachedFile(e.target.files?.[0] || null)}
+                      accept=".pdf,.doc,.docx,.jpg,.png"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="purpose">?´ìš©ëª©ì </Label>
+                  <Textarea
+                    id="purpose"
+                    value={purpose}
+                    onChange={(e) => setPurpose(e.target.value)}
+                    placeholder="ë°°ì°¨ ëª©ì ???ì„¸???…ë ¥?˜ì„¸??
+                    rows={3}
+                    required
+                  />
+                </div>
+
+                <Button type="submit" className="w-full">
+                  ë°°ì°¨ ?”ì²­?˜ê¸°
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* ??ë°°ì°¨ ? ì²­ ?„í™© */}
+        <Card>
+          <CardHeader>
+            <CardTitle>??ë°°ì°¨ ? ì²­ ?„í™©</CardTitle>
+          </CardHeader>
+          <CardContent>
+          <div className="space-y-4">
+            {requests.slice(0, 5).map((request) => (
+              <div key={request.id} className="p-3 border rounded-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">{request.requestId}</span>
+                  {getStatusBadge(request.status)}
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  <div className="flex items-center gap-1">
+                    <Car className="h-3 w-3" />
+                    {request.vehicleNumber}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <User className="h-3 w-3" />
+                    {request.driverName}
+                  </div>
+                  <div>{request.date} {request.time}</div>
+                  <div>{request.departure} ??{request.destination}</div>
+                </div>
+                {request.status === "pending" && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="w-full"
+                    onClick={() => handleCancel(request.id)}
+                  >
+                    ì·¨ì†Œ
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ?„ì²´ ë°°ì°¨ ?„í™© ?Œì´ë¸?*/}
+      <Card className={user?.roleId === 3 ? '' : 'hidden'}>
+        <CardHeader>
+          <CardTitle>?„ì²´ ë°°ì°¨ ?„í™©</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>?ˆì•½ë²ˆí˜¸</TableHead>
+              <TableHead>ì°¨ëŸ‰ë²ˆí˜¸</TableHead>
+              <TableHead>ê¸°ì‚¬</TableHead>
+              <TableHead>?°ë½ì²?/TableHead>
+              <TableHead>ì¶œë°œì§€</TableHead>
+              <TableHead>?„ì°©ì§€</TableHead>
+              <TableHead>?¼ì‹œ</TableHead>
+              <TableHead>?¸ì›</TableHead>
+              <TableHead>?íƒœ</TableHead>
+              <TableHead>?‘ì—…</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {requests.map((request) => (
+              <TableRow key={request.id}>
+                <TableCell className="font-medium">{request.requestId}</TableCell>
+                <TableCell>{request.vehicleNumber}</TableCell>
+                <TableCell>{request.driverName}</TableCell>
+                <TableCell>{request.driverPhone}</TableCell>
+                <TableCell>{request.departure}</TableCell>
+                <TableCell>{request.destination}</TableCell>
+                <TableCell>
+                  <div className="text-sm">
+                    <div>{request.date}</div>
+                    <div className="text-muted-foreground">{request.time}</div>
+                  </div>
+                </TableCell>
+                <TableCell>{request.passengers}ëª?/TableCell>
+                <TableCell>{getStatusBadge(request.status)}</TableCell>
+                <TableCell>
+                  {request.status === "pending" && (
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => handleCancel(request.id)}
+                    >
+                      ì·¨ì†Œ
+                    </Button>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+
+
+
+
+
+

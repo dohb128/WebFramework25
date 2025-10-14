@@ -9,6 +9,12 @@ import {
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "../ui/sheet";
 import { useState } from "react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 import { useAuth } from "../../contexts/useAuth";
 
 interface TopNavigationProps {
@@ -23,9 +29,15 @@ const navigationItems = [
   { id: "dashboard", label: "대시보드" },
 ];
 
+const adminNavigationItems = [
+  { id: "facility-management", label: "시설 예약 관리" },
+  { id: "vehicle-dispatch-admin", label: "차량 배차 관리" },
+  { id: "facility-registration", label: "시설 등록" },
+];
+
 export function TopNavigation({ activeTab, onTabChange }: TopNavigationProps) {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
-  const { isAuthenticated, logout } = useAuth();
+  const { isAuthenticated, logout, user } = useAuth();
 
   const handleLogin = () => {
     onTabChange("login");
@@ -83,6 +95,27 @@ export function TopNavigation({ activeTab, onTabChange }: TopNavigationProps) {
               </Button>
             ))}
           </div>
+
+          {/* 관리자 메뉴 */}
+          {user?.roleId === 3 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm">
+                  관리
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="bg-white">
+                {adminNavigationItems.map((item) => (
+                  <DropdownMenuItem
+                    key={item.id}
+                    onClick={() => handleTabClick(item.id)}
+                  >
+                    {item.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
           {/* 인증 상태 */}
           <div className="flex items-center space-x-2 ml-6">
@@ -152,6 +185,26 @@ export function TopNavigation({ activeTab, onTabChange }: TopNavigationProps) {
                     {item.label}
                   </Button>
                 ))}
+
+                {/* 모바일 관리자 메뉴 */}
+                {user?.roleId === 3 && (
+                  <>
+                    <div className="border-t pt-4 mt-4" />
+                    <h2 className="text-sm font-semibold text-gray-500 px-4">
+                      관리
+                    </h2>
+                    {adminNavigationItems.map((item) => (
+                      <Button
+                        key={item.id}
+                        variant="ghost"
+                        className="w-full justify-start"
+                        onClick={() => handleTabClick(item.id)}
+                      >
+                        {item.label}
+                      </Button>
+                    ))}
+                  </>
+                )}
 
                 <div className="border-t pt-4 mt-4 flex flex-col gap-2">
                   {!isAuthenticated ? (

@@ -22,7 +22,7 @@ export default function FacilityManagement() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Facility reservation management</h1>
+      <h1 className="text-2xl font-bold">시설 예약 관리</h1>
       <ReservationAdmin />
     </div>
   );
