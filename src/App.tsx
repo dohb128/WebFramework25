@@ -6,6 +6,7 @@ import type { Facility } from "./components/facility/FacilityReservation";
 import { FacilityBooking } from "./components/facility/FacilityBooking"; // ✅ 새 컴포넌트
 import FacilityManagement from "./components/facilities/FacilityManagement";
 import { VehicleDispatch } from "./components/vehicle/VehicleDispatch";
+import { VehicleDispatchAdmin } from "./components/vehicle/VehicleDispatchAdmin";
 import { StatsCharts } from "./components/dashboard/StatsCharts";
 import { LoginPage } from "./components/auth/LoginPage";
 import { RegisterPage } from "./components/auth/RegisterPage";
@@ -53,7 +54,7 @@ export default function App() {
       case "facility-management":
         return <FacilityManagement />;
       case "vehicle-dispatch-admin":
-        return <VehicleDispatch />;
+        return <VehicleDispatchAdmin />;
       case "facility-registration":
         // TODO: Implement facility registration page
         return <FacilityManagement />;

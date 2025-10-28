@@ -1,10 +1,9 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Badge } from "../ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { Calendar } from "../ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
@@ -48,7 +47,6 @@ type ReservationRow = {
 export function VehicleDispatch() {
   const { user } = useAuth();
   const [requests, setRequests] = useState<VehicleRequest[]>([]);
-  const [assigned, setAssigned] = useState<VehicleRequest[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date>();
   const [selectedTime, setSelectedTime] = useState("");
   const [departure, setDeparture] = useState("");
@@ -56,7 +54,21 @@ export function VehicleDispatch() {
   const [passengers, setPassengers] = useState(1);
   const [purpose, setPurpose] = useState("");
 
-  // 상태 표시 뱃지
+  // 배차 완료된(할당된) 나의 예약 목록 (현재/미래)
+  type MyAssigned = {
+    dispatch_id: number;
+    reservation_id: number;
+    vehicle_id: number;
+    driver_id: number | null;
+    status: string | null;
+    start_time: string;
+    end_time: string;
+    departure: string | null;
+    destination: string | null;
+    title?: string | null;
+  };
+  const [myAssigned, setMyAssigned] = useState<MyAssigned[]>([]);
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "pending":
@@ -66,9 +78,9 @@ export function VehicleDispatch() {
       case "completed":
         return <Badge className="bg-blue-100 text-blue-800">완료</Badge>;
       case "cancelled":
-        return <Badge className="bg-red-100 text-red-800">취소됨</Badge>;
+        return <Badge className="bg-red-100 text-red-800">취소</Badge>;
       default:
-        return <Badge>알 수 없음</Badge>;
+        return <Badge>상태 없음</Badge>;
     }
   };
 
@@ -81,18 +93,17 @@ export function VehicleDispatch() {
       case "COMPLETED":
         return "completed";
       case "CANCELLED":
+      case "REJECTED":
         return "cancelled";
       default:
         return "pending";
     }
   };
 
-  // 내 예약 / 전체 배차 조회
   useEffect(() => {
     let mounted = true;
     const load = async () => {
       try {
-        // 내 최근 차량 예약
         const { data: mine, error: errMine } = await supabase
           .from("reservations")
           .select(
@@ -100,7 +111,7 @@ export function VehicleDispatch() {
           )
           .eq("reservation_type", "VEHICLE")
           .eq("user_id", user?.user_id ?? "")
-          .order("created_at", { ascending: false })
+          .order("start_time", { ascending: true })
           .limit(5);
 
         if (errMine) throw errMine;
@@ -114,51 +125,20 @@ export function VehicleDispatch() {
           driverPhone: "-",
           departure: r.departure ?? "-",
           destination: r.destination ?? "-",
-          date: r.start_time ? new Date(r.start_time).toLocaleDateString("ko-KR") : "",
+          date: r.start_time ? new Date(r.start_time).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" }) : "",
           time: r.start_time
-            ? new Date(r.start_time).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })
+            ? new Date(r.start_time).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Seoul" })
             : "",
           participants: r.participants ?? 0,
           status: mapStatus(r.status ?? undefined),
           purpose: r.title ?? "-",
-          requestDate: r.start_time ? new Date(r.start_time).toLocaleDateString("ko-KR") : "",
-        }));
-
-        // 관리자용 전체 배차 목록
-        const { data: allAssigned, error: errAssigned } = await supabase
-          .from("reservations")
-          .select(
-            "reservation_id, vehicle_id, title, participants, start_time, end_time, status, user_id, org_id, departure, destination"
-          )
-          .eq("reservation_type", "VEHICLE")
-          .order("start_time", { ascending: false });
-
-        if (errAssigned) throw errAssigned;
-
-        const assignedRows: ReservationRow[] = (allAssigned ?? []) as ReservationRow[];
-        const assignedMapped: VehicleRequest[] = assignedRows.map((r) => ({
-          id: String(r.reservation_id),
-          requestId: `#${r.reservation_id}`,
-          vehicleNumber: r.vehicle_id ? String(r.vehicle_id) : "-",
-          driverName: "-",
-          driverPhone: "-",
-          departure: r.departure ?? "-",
-          destination: r.destination ?? "-",
-          date: r.start_time ? new Date(r.start_time).toLocaleDateString("ko-KR") : "",
-          time: r.start_time
-            ? new Date(r.start_time).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })
-            : "",
-          participants: r.participants ?? 0,
-          status: mapStatus(r.status ?? undefined),
-          purpose: r.title ?? "-",
-          requestDate: r.start_time ? new Date(r.start_time).toLocaleDateString("ko-KR") : "",
+          requestDate: r.start_time ? new Date(r.start_time).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" }) : "",
         }));
 
         if (!mounted) return;
         setRequests(mineMapped);
-        setAssigned(assignedMapped);
       } catch (e) {
-        console.error("차량 예약 불러오기 실패", e);
+        console.error("요청 데이터 가져오기 실패", e);
       }
     };
     if (user?.user_id) load();
@@ -167,22 +147,106 @@ export function VehicleDispatch() {
     };
   }, [user?.user_id]);
 
-  // 🚗 차량 배차 요청 저장 (한국 시간 기준)
+  // 나의 배차 완료된 예약(현재 시각 이후) 조회
+  useEffect(() => {
+    let alive = true;
+    const loadAssigned = async () => {
+      if (!user?.user_id) return;
+      try {
+        const { data, error } = await supabase
+          .from("dispatches")
+          .select(`
+            dispatch_id, reservation_id, vehicle_id, driver_id, status, created_at,
+            reservations!inner ( reservation_id, user_id, start_time, end_time, departure, destination, title )
+          `)
+          .eq("reservations.user_id", user.user_id)
+          .order("dispatch_id", { ascending: true });
+
+        if (error) throw error;
+        const now = new Date();
+        const rows = (data ?? []) as any[];
+        const mapped: MyAssigned[] = rows
+          .map((d) => {
+            const r = Array.isArray(d.reservations) ? d.reservations[0] : d.reservations;
+            return r
+              ? {
+                  dispatch_id: d.dispatch_id,
+                  reservation_id: d.reservation_id,
+                  vehicle_id: d.vehicle_id,
+                  driver_id: d.driver_id,
+                  status: d.status ?? null,
+                  start_time: r.start_time,
+                  end_time: r.end_time,
+                  departure: r.departure ?? null,
+                  destination: r.destination ?? null,
+                  title: r.title ?? null,
+                }
+              : null;
+          })
+          .filter(Boolean) as MyAssigned[];
+
+        const futureOnly = mapped.filter((m) => new Date(m.start_time) >= now);
+        const futureSorted = futureOnly.sort(
+          (a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+        );
+        if (!alive) return;
+        setMyAssigned(futureSorted);
+      } catch (err) {
+        console.error("배차 목록 로드 실패", err);
+      }
+    };
+    loadAssigned();
+    return () => {
+      alive = false;
+    };
+  }, [user?.user_id]);
+
+  const cancelAssigned = async (item: MyAssigned) => {
+    const ok = typeof window !== "undefined" && window.confirm("해당 배차를 취소하시겠습니까? 이 작업은 되돌릴 수 없습니다.");
+    if (!ok) return;
+    try {
+      const { error: e1 } = await supabase
+        .from("dispatches")
+        .update({ status: "CANCELLED" })
+        .eq("dispatch_id", item.dispatch_id);
+      if (e1) throw e1;
+
+      // 예약도 취소 처리 (정책에 따라 PENDING 복귀로 변경 가능)
+      const { error: e2 } = await supabase
+        .from("reservations")
+        .update({ status: "CANCELLED" })
+        .eq("reservation_id", item.reservation_id);
+      if (e2) {
+        console.warn("예약 상태 변경 실패 (배차는 취소됨)", e2);
+      }
+      setMyAssigned((prev) => prev.filter((m) => m.dispatch_id !== item.dispatch_id));
+    } catch (err) {
+      console.error("배차 취소 실패", err);
+      alert("배차 취소에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
     if (!selectedDate || !selectedTime) return;
 
     const [hh, mm] = selectedTime.split(":");
-    const start = new Date(selectedDate);
-    start.setHours(Number(hh || 0), Number(mm || 0), 0, 0);
-    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    // 선택한 날짜/시간을 KST 벽시계 시각 그대로 DB(timestamp without time zone)에 저장하기 위해
+    // 타임존 오프셋이 없는 문자열(YYYY-MM-DD HH:mm:ss)로 구성합니다.
+    const y = selectedDate.getFullYear();
+    const mon = selectedDate.getMonth() + 1;
+    const day = selectedDate.getDate();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const toLocalTimestampString = (dt: Date) =>
+      `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}:00`;
 
-    // ✅ 한국 시간(KST) 그대로 DB에 저장
-    start.setHours(start.getHours() - 9);
-    end.setHours(end.getHours() - 9);
+    const startLocal = new Date(y, mon - 1, day, Number(hh || 0), Number(mm || 0), 0, 0);
+    const endLocal = new Date(startLocal.getTime() + 60 * 60 * 1000);
+    const startStr = toLocalTimestampString(startLocal);
+    const endStr = toLocalTimestampString(endLocal);
 
-    const title = purpose?.trim() || `차량 배차 요청자: ${user.name ?? "사용자"}`;
+    const title = purpose?.trim() || `차량 이용 요청: ${user.name ?? "사용자"}`;
 
     const { data, error } = await supabase
       .from("reservations")
@@ -196,15 +260,15 @@ export function VehicleDispatch() {
         participants: passengers,
         departure,
         destination,
-        start_time: start.toISOString(),
-        end_time: end.toISOString(),
+        start_time: startStr,
+        end_time: endStr,
         status: "PENDING",
       })
       .select("reservation_id, start_time")
       .single();
 
     if (error) {
-      console.error("차량 예약 생성 실패", error);
+      console.error("예약 생성 실패", error);
       return;
     }
 
@@ -216,16 +280,16 @@ export function VehicleDispatch() {
       driverPhone: "-",
       departure,
       destination,
-      date: start.toLocaleDateString("ko-KR"),
-      time: start.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }),
+      date: startLocal.toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" }),
+      time: startLocal.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Seoul" }),
       participants: passengers,
       status: "pending",
       purpose: title,
-      requestDate: start.toLocaleDateString("ko-KR"),
+      requestDate: startLocal.toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" }),
     };
     setRequests((prev) => [newReq, ...prev].slice(0, 5));
 
-    // 폼 초기화
+    // 입력 초기화
     setSelectedDate(undefined);
     setSelectedTime("");
     setDeparture("");
@@ -235,6 +299,17 @@ export function VehicleDispatch() {
   };
 
   const handleCancel = async (id: string) => {
+    const reservationId = Number(id);
+    if (Number.isFinite(reservationId)) {
+      const { error } = await supabase
+        .from("reservations")
+        .update({ status: "CANCELLED" })
+        .eq("reservation_id", reservationId)
+        .eq("status", "PENDING");
+      if (error) {
+        console.error("요청 취소 실패", error);
+      }
+    }
     setRequests((prev) => prev.map((req) => (req.id === id ? { ...req, status: "cancelled" } : req)));
   };
 
@@ -247,43 +322,31 @@ export function VehicleDispatch() {
   return (
     <div className="space-y-6">
       <div>
-        <h2>차량 배차 예약</h2>
-        <p className="text-muted-foreground">차량 배차 요청을 생성하고 상태를 확인할 수 있습니다.</p>
+        <h2>차량 운행 요청</h2>
+        <p className="text-muted-foreground">차량 이용을 요청하고 상태를 확인할 수 있습니다.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* 🚗 배차 요청 폼 */}
+        {/* 차량 요청 폼 */}
         <div className="lg:col-span-2">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Car className="h-5 w-5" />
-                배차 요청
+                차량 요청
               </CardTitle>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-6">
-                {/* 출발지/도착지 */}
+                {/* 출발/도착 */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="departure" className="mb-2">출발지</Label>
-                    <Input
-                      id="departure"
-                      value={departure}
-                      onChange={(e) => setDeparture(e.target.value)}
-                      placeholder="출발지를 입력하세요"
-                      required
-                    />
+                    <Input id="departure" value={departure} onChange={(e) => setDeparture(e.target.value)} placeholder="출발지를 입력하세요" required />
                   </div>
                   <div>
                     <Label htmlFor="destination" className="mb-2">도착지</Label>
-                    <Input
-                      id="destination"
-                      value={destination}
-                      onChange={(e) => setDestination(e.target.value)}
-                      placeholder="도착지를 입력하세요"
-                      required
-                    />
+                    <Input id="destination" value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="도착지를 입력하세요" required />
                   </div>
                 </div>
 
@@ -295,7 +358,7 @@ export function VehicleDispatch() {
                       <PopoverTrigger asChild>
                         <Button variant="outline" className="w-full justify-start text-left font-normal">
                           <CalendarIcon className="mr-2 h-4 w-4" />
-                          {selectedDate ? selectedDate.toLocaleDateString("ko-KR") : <span>날짜 선택</span>}
+                          {selectedDate ? selectedDate.toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" }) : <span>날짜 선택</span>}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0 bg-white">
@@ -322,43 +385,26 @@ export function VehicleDispatch() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="passengers" className="mb-2">탑승 인원</Label>
-                    <Input
-                      id="passengers"
-                      type="number"
-                      value={passengers}
-                      onChange={(e) => setPassengers(Number(e.target.value))}
-                      min={1}
-                      max={50}
-                      required
-                    />
+                    <Input id="passengers" type="number" value={passengers} onChange={(e) => setPassengers(Number(e.target.value))} min={1} max={50} required />
                   </div>
                 </div>
 
                 {/* 목적 */}
                 <div>
                   <Label htmlFor="purpose" className="mb-2">이용 목적</Label>
-                  <Textarea
-                    id="purpose"
-                    value={purpose}
-                    onChange={(e) => setPurpose(e.target.value)}
-                    placeholder="배차 목적을 입력하세요"
-                    rows={3}
-                    required
-                  />
+                  <Textarea id="purpose" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="이용 목적을 입력하세요" rows={3} required />
                 </div>
 
-                <Button type="submit" className="w-full">
-                  요청 등록
-                </Button>
+                <Button type="submit" className="w-full">요청 제출</Button>
               </form>
             </CardContent>
           </Card>
         </div>
 
-        {/* 내 최근 요청 */}
+        {/* 나의 최근 요청 */}
         <Card>
           <CardHeader>
-            <CardTitle>최근 배차 요청</CardTitle>
+            <CardTitle>최근 차량 요청</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -389,63 +435,44 @@ export function VehicleDispatch() {
         </Card>
       </div>
 
-      {/* 관리자 전용 전체 배차 내역 */}
-      {user?.roleId === 3 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>전체 배차 내역 (관리자 전용)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>차량</TableHead>
-                  <TableHead>기사</TableHead>
-                  <TableHead>연락처</TableHead>
-                  <TableHead>출발지</TableHead>
-                  <TableHead>도착지</TableHead>
-                  <TableHead>날짜 / 시간</TableHead>
-                  <TableHead>탑승 인원</TableHead>
-                  <TableHead>상태</TableHead>
-                  <TableHead>작업</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {assigned.map((request) => (
-                  <TableRow key={request.id}>
-                    <TableCell className="font-medium">{request.requestId}</TableCell>
-                    <TableCell>{request.vehicleNumber}</TableCell>
-                    <TableCell>{request.driverName}</TableCell>
-                    <TableCell>{request.driverPhone}</TableCell>
-                    <TableCell>{request.departure}</TableCell>
-                    <TableCell>{request.destination}</TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        <div>{request.date}</div>
-                        <div className="text-muted-foreground">{request.time}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>{request.participants}</TableCell>
-                    <TableCell>{getStatusBadge(request.status)}</TableCell>
-                    <TableCell>
-                      {request.status === "pending" && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleCancel(request.id)}
-                        >
-                          취소
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+      {/* 배차 완료된 요청 (현재/미래) */}
+      <Card>
+        <CardHeader>
+          <CardTitle>배차 완료된 요청</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {myAssigned.length === 0 ? (
+            <div className="text-sm text-muted-foreground">현재/미래 일정의 배차 완료된 요청이 없습니다.</div>
+          ) : (
+            <div className="space-y-4">
+              {myAssigned.map((it) => (
+                <div key={it.dispatch_id} className="p-3 border rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div className="font-medium">예약 #{it.reservation_id}</div>
+                    <Badge variant="secondary">{it.status ?? "ASSIGNED"}</Badge>
+                  </div>
+                  <div className="mt-2 text-sm text-muted-foreground">
+                    <div>
+                      {new Date(it.start_time).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" })} {new Date(it.start_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Seoul" })}
+                      {" "}~{" "}
+                      {new Date(it.end_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Seoul" })}
+                    </div>
+                    <div>
+                      {it.departure ?? "-"} → {it.destination ?? "-"}
+                    </div>
+                    <div className="text-xs">차량 #{it.vehicle_id}{it.driver_id ? ` · 기사 #${it.driver_id}` : ""}</div>
+                  </div>
+                  <div className="mt-3">
+                    <Button variant="outline" size="sm" onClick={() => cancelAssigned(it)}>
+                      배차 취소
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
