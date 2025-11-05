@@ -63,40 +63,15 @@ export function VehicleDispatchAdmin() {
   const [dispatches, setDispatches] = useState<DispatchRow[]>([]);
   const [pendingReservations, setPendingReservations] = useState<ReservationRow[]>([]);
   const [selection, setSelection] = useState<Record<number, { driver_id?: number; vehicle_id?: number }>>({});
-  const [returnDurations, setReturnDurations] = useState<Record<number, string>>({});
-
-  // "2시간 30분", "90분", "2h30m", "2:30" 등 다양한 형식 파싱 → 분 단위
-  const parseDurationToMinutes = (val: string): number => {
-    if (!val) return NaN;
-    const s = val.trim().toLowerCase();
-    // HH:MM
-    const colon = s.match(/^([0-9]{1,2})\s*[:]\s*([0-9]{1,2})$/);
-    if (colon) {
-      const h = parseInt(colon[1], 10);
-      const m = parseInt(colon[2], 10);
-      if (Number.isFinite(h) && Number.isFinite(m)) return h * 60 + m;
-    }
-    // 2시간 30분 / 2h 30m / 2h30m
-    const re = /(?:(\d+)\s*(시간|hour|hours|h))?\s*(?:(\d+)\s*(분|minute|minutes|min|m))?/;
-    const m1 = s.match(re);
-    if (m1 && (m1[1] || m1[3])) {
-      const h = m1[1] ? parseInt(m1[1], 10) : 0;
-      const m = m1[3] ? parseInt(m1[3], 10) : 0;
-      if (Number.isFinite(h) && Number.isFinite(m)) return h * 60 + m;
-    }
-    // 90분 / 120m
-    const onlyMin = s.match(/^(\d+)\s*(분|minute|minutes|min|m)$/);
-    if (onlyMin) {
-      const m = parseInt(onlyMin[1], 10);
-      if (Number.isFinite(m)) return m;
-    }
-    // 2시간 / 2h
-    const onlyHour = s.match(/^(\d+)\s*(시간|hour|hours|h)$/);
-    if (onlyHour) {
-      const h = parseInt(onlyHour[1], 10);
-      if (Number.isFinite(h)) return h * 60;
-    }
-    return NaN;
+  const [returnMinutes, setReturnMinutes] = useState<Record<number, string>>({});
+  const formatNaiveLocal = (date: Date) => {
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    const yyyy = date.getFullYear();
+    const mm = pad(date.getMonth() + 1);
+    const dd = pad(date.getDate());
+    const HH = pad(date.getHours());
+    const MM = pad(date.getMinutes());
+    return `${yyyy}-${mm}-${dd}T${HH}:${MM}:00`;
   };
   
   type AssignedCard = {
@@ -315,10 +290,11 @@ export function VehicleDispatchAdmin() {
 
     const start = new Date(r.start_time);
     const fallbackMinutes = Math.max(1, Math.round((new Date(r.end_time).getTime() - start.getTime()) / 60000));
-    const inputMinutes = parseDurationToMinutes(returnDurations[r.reservation_id] ?? "");
-    const minutes = Number.isFinite(inputMinutes) && inputMinutes > 0 ? inputMinutes : fallbackMinutes;
+    const raw = returnMinutes[r.reservation_id];
+    const parsed = raw != null && raw !== "" ? parseInt(raw, 10) : NaN;
+    const minutes = Number.isFinite(parsed) && parsed > 0 ? parsed : fallbackMinutes;
     const end = new Date(start.getTime() + minutes * 60000);
-    const endISO = end.toISOString();
+    const endISO = formatNaiveLocal(end);
     if (!(end > start)) {
       alert("복귀 시간이 출발 시간보다 이후여야 합니다.");
       return;
@@ -633,15 +609,14 @@ export function VehicleDispatchAdmin() {
                         </TableCell>
                         <TableCell className="text-right space-x-2">
                           <div className="inline-flex items-center gap-2 mr-2 align-middle">
-                            <span className="text-xs text-muted-foreground">소요</span>
+                            <span className="text-xs text-muted-foreground">소요(분)</span>
                             <Input
-                              type="text"
-                              placeholder="예: 1시간 30분 / 90분 / 2:30"
-                              className="h-8 w-[180px]"
-                              value={(returnDurations[r.reservation_id] ?? "") as string}
-                              onChange={(e) =>
-                                setReturnDurations((prev) => ({ ...prev, [r.reservation_id]: e.target.value }))
-                              }
+                              type="number"
+                              min={1}
+                              placeholder="예: 30"
+                              className="h-8 w-[120px]"
+                              value={(returnMinutes[r.reservation_id] ?? "") as string}
+                              onChange={(e) => setReturnMinutes((prev) => ({ ...prev, [r.reservation_id]: e.target.value }))}
                             />
                           </div>
                           <Button size="sm" variant="outline" onClick={() => assign(r)}>
