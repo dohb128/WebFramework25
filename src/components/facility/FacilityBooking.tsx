@@ -96,7 +96,7 @@ export function FacilityBooking({ facility, onBack }: FacilityBookingProps) {
     }
 
     const { error } = await supabase.from("reservations").insert({
-      reservation_type: "TRAINING",
+      reservation_type: facility.category,
       user_id: user.user_id,
       facility_id: facility.facility_id,
       title: notes ? notes.slice(0, 200) : `${facility.name} 예약 신청`,
