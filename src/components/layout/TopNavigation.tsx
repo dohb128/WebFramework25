@@ -33,11 +33,12 @@ const adminNavigationItems = [
   { id: "facility-management", label: "시설 예약 관리" },
   { id: "vehicle-dispatch-admin", label: "차량 배차 관리" },
   { id: "facility-registration", label: "시설 등록" },
+  { id: "access-control", label: "권한/IP 관리" },
 ];
 
 export function TopNavigation({ activeTab, onTabChange }: TopNavigationProps) {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
-  const { isAuthenticated, logout, user } = useAuth();
+  const { isAuthenticated, isLoading, logout, user } = useAuth();
 
   const handleLogin = () => {
     onTabChange("login");
@@ -119,7 +120,9 @@ export function TopNavigation({ activeTab, onTabChange }: TopNavigationProps) {
 
           {/* 인증 상태 */}
           <div className="flex items-center space-x-2 ml-6">
-            {!isAuthenticated ? (
+            {isLoading ? (
+              <span className="text-sm text-gray-500">확인중...</span>
+            ) : !isAuthenticated ? (
               <>
                 <Button
                   variant="outline"
@@ -207,7 +210,9 @@ export function TopNavigation({ activeTab, onTabChange }: TopNavigationProps) {
                 )}
 
                 <div className="border-t pt-4 mt-4 flex flex-col gap-2">
-                  {!isAuthenticated ? (
+                  {isLoading ? (
+                    <span className="text-sm text-gray-500 px-2">확인중...</span>
+                  ) : !isAuthenticated ? (
                     <>
                       <Button
                         variant="outline"

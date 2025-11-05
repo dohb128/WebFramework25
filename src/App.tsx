@@ -5,12 +5,14 @@ import FacilityReservation from "./components/facility/FacilityReservation";
 import type { Facility } from "./components/facility/FacilityReservation";
 import { FacilityBooking } from "./components/facility/FacilityBooking"; // ✅ 새 컴포넌트
 import FacilityManagement from "./components/facilities/FacilityManagement";
+import { ReservationAdmin } from "./components/facility/ReservationAdmin";
 import { VehicleDispatch } from "./components/vehicle/VehicleDispatch";
 import { VehicleDispatchAdmin } from "./components/vehicle/VehicleDispatchAdmin";
 import { StatsCharts } from "./components/dashboard/StatsCharts";
 import { LoginPage } from "./components/auth/LoginPage";
 import { RegisterPage } from "./components/auth/RegisterPage";
 import { MyPage } from "./components/profile/MyPage";
+import { AccessControl } from "./components/admin/AccessControl";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("home");
@@ -52,12 +54,15 @@ export default function App() {
       case "my-page":
         return <MyPage />;
       case "facility-management":
-        return <FacilityManagement />;
+        // 관리자는 시설 예약 승인/관리 화면으로 이동
+        return <ReservationAdmin />;
       case "vehicle-dispatch-admin":
         return <VehicleDispatchAdmin />;
       case "facility-registration":
-        // TODO: Implement facility registration page
+        // 시설/차량/기사 등록 화면
         return <FacilityManagement />;
+      case "access-control":
+        return <AccessControl />;
       default:
         return <HomePage onNavigate={setActiveTab} />;
     }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type ReactNode } from "react";
+﻿import { useState, useEffect, type ReactNode } from "react";
 import { supabase } from "../utils/supabase/client";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 import type { Profile, LoginCredentials, RegisterData, UserRole } from "../types/auth";
@@ -12,7 +12,7 @@ const ROLE_NAME_TO_ID: Record<UserRole, number> = {
   civilian: 4,
 };
 
-// Supabase User -> DB Profile 변환 (DB 조회 실패 시 세션 메타데이터로 폴백)
+// Supabase User → DB Profile 변환
 async function fetchUserProfile(
   supabaseUser: SupabaseUser
 ): Promise<Profile | null> {
@@ -22,39 +22,23 @@ async function fetchUserProfile(
     .eq("user_id", supabaseUser.id)
     .single();
 
-  if (!error && profile) {
-    return {
-      user_id: profile.user_id,
-      name: profile.name,
-      roleId: profile.role_id,
-    };
+  if (error || !profile) {
+    console.error("Error fetching user profile:", error);
+    return null;
   }
 
-  // 폴백: 세션 유저 메타데이터에서 역할 정보를 사용
-  const roleName = (supabaseUser.user_metadata?.role ?? supabaseUser.app_metadata?.role) as UserRole | undefined;
-  const nameFromMeta = (supabaseUser.user_metadata?.name ?? supabaseUser.email ?? "").toString();
-  if (roleName && ROLE_NAME_TO_ID[roleName]) {
-    return {
-      user_id: supabaseUser.id,
-      name: nameFromMeta,
-      roleId: ROLE_NAME_TO_ID[roleName],
-    };
-  }
-
-  console.error("Error fetching user profile:", error);
-  return null;
+  return {
+    user_id: profile.user_id,
+    name: profile.name,
+    roleId: profile.role_id,
+  };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const initRan = useRef(false);
-  const [hasSession, setHasSession] = useState(false);
 
   useEffect(() => {
-    if (initRan.current) return;
-    initRan.current = true;
-
     const checkSession = async () => {
       try {
         const {
@@ -62,12 +46,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } = await supabase.auth.getSession();
 
         if (session?.user) {
-          setHasSession(true);
           const profile = await fetchUserProfile(session.user);
           setUser(profile);
-        } else {
-          setHasSession(false);
-          setUser(null);
         }
       } catch (error) {
         console.error("Session check error:", error);
@@ -81,22 +61,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      try {
-        if (!session?.user) {
-          setHasSession(false);
-          setUser(null);
-          return;
-        }
-        setHasSession(true);
-        const profile = await fetchUserProfile(session.user);
-        setUser(profile);
-      } catch (e) {
-        console.error("Auth state change handling error:", e);
+      if (!session?.user) {
         setUser(null);
-      } finally {
-        // Clear loading state in case this fires before checkSession completes
-        setIsLoading(false);
+        return;
       }
+
+      const profile = await fetchUserProfile(session.user);
+      setUser(profile);
     });
 
     return () => {
@@ -113,18 +84,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (error) throw error;
-      // 즉시 현재 세션과 프로필을 반영해 헤더가 바로 갱신되도록 처리
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session?.user) {
-        const profile = await fetchUserProfile(session.user);
-        setUser(profile);
-        setHasSession(true);
-      } else {
-        setUser(null);
-        setHasSession(false);
-      }
       return true;
     } catch (error) {
       console.error("Login error:", error);
@@ -180,15 +139,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     await supabase.auth.signOut();
-    setHasSession(false);
     setUser(null);
-    setIsLoading(false);
   };
 
   const value: AuthContextType = {
     user,
     isLoading,
-    isAuthenticated: hasSession,
+    isAuthenticated: Boolean(user),
     login,
     register,
     logout,

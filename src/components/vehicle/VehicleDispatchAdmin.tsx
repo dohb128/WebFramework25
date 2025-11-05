@@ -8,6 +8,7 @@ import { Info } from "lucide-react";
 import { useAuth } from "../../contexts/useAuth";
 import { supabase } from "../../utils/supabase/client";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import { Input } from "../ui/input";
 
 type DbStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED" | "COMPLETED";
 
@@ -62,6 +63,41 @@ export function VehicleDispatchAdmin() {
   const [dispatches, setDispatches] = useState<DispatchRow[]>([]);
   const [pendingReservations, setPendingReservations] = useState<ReservationRow[]>([]);
   const [selection, setSelection] = useState<Record<number, { driver_id?: number; vehicle_id?: number }>>({});
+  const [returnDurations, setReturnDurations] = useState<Record<number, string>>({});
+
+  // "2시간 30분", "90분", "2h30m", "2:30" 등 다양한 형식 파싱 → 분 단위
+  const parseDurationToMinutes = (val: string): number => {
+    if (!val) return NaN;
+    const s = val.trim().toLowerCase();
+    // HH:MM
+    const colon = s.match(/^([0-9]{1,2})\s*[:]\s*([0-9]{1,2})$/);
+    if (colon) {
+      const h = parseInt(colon[1], 10);
+      const m = parseInt(colon[2], 10);
+      if (Number.isFinite(h) && Number.isFinite(m)) return h * 60 + m;
+    }
+    // 2시간 30분 / 2h 30m / 2h30m
+    const re = /(?:(\d+)\s*(시간|hour|hours|h))?\s*(?:(\d+)\s*(분|minute|minutes|min|m))?/;
+    const m1 = s.match(re);
+    if (m1 && (m1[1] || m1[3])) {
+      const h = m1[1] ? parseInt(m1[1], 10) : 0;
+      const m = m1[3] ? parseInt(m1[3], 10) : 0;
+      if (Number.isFinite(h) && Number.isFinite(m)) return h * 60 + m;
+    }
+    // 90분 / 120m
+    const onlyMin = s.match(/^(\d+)\s*(분|minute|minutes|min|m)$/);
+    if (onlyMin) {
+      const m = parseInt(onlyMin[1], 10);
+      if (Number.isFinite(m)) return m;
+    }
+    // 2시간 / 2h
+    const onlyHour = s.match(/^(\d+)\s*(시간|hour|hours|h)$/);
+    if (onlyHour) {
+      const h = parseInt(onlyHour[1], 10);
+      if (Number.isFinite(h)) return h * 60;
+    }
+    return NaN;
+  };
   
   type AssignedCard = {
     dispatch_id: number;
@@ -278,7 +314,15 @@ export function VehicleDispatchAdmin() {
     }
 
     const start = new Date(r.start_time);
-    const end = new Date(r.end_time);
+    const fallbackMinutes = Math.max(1, Math.round((new Date(r.end_time).getTime() - start.getTime()) / 60000));
+    const inputMinutes = parseDurationToMinutes(returnDurations[r.reservation_id] ?? "");
+    const minutes = Number.isFinite(inputMinutes) && inputMinutes > 0 ? inputMinutes : fallbackMinutes;
+    const end = new Date(start.getTime() + minutes * 60000);
+    const endISO = end.toISOString();
+    if (!(end > start)) {
+      alert("복귀 시간이 출발 시간보다 이후여야 합니다.");
+      return;
+    }
     const drvItems = dispatchesByDriver.get(sel.driver_id) ?? [];
     const vehItems = dispatchesByVehicle.get(sel.vehicle_id) ?? [];
     const chosenVehicle = vehicles.find((v) => v.vehicle_id === sel.vehicle_id);
@@ -322,7 +366,7 @@ export function VehicleDispatchAdmin() {
 
     const { error: e2 } = await supabase
       .from("reservations")
-      .update({ status: "APPROVED", vehicle_id: sel.vehicle_id })
+      .update({ status: "APPROVED", vehicle_id: sel.vehicle_id, end_time: endISO })
       .eq("reservation_id", r.reservation_id);
 
     if (e2) {
@@ -588,6 +632,18 @@ export function VehicleDispatchAdmin() {
                           </Select>
                         </TableCell>
                         <TableCell className="text-right space-x-2">
+                          <div className="inline-flex items-center gap-2 mr-2 align-middle">
+                            <span className="text-xs text-muted-foreground">소요</span>
+                            <Input
+                              type="text"
+                              placeholder="예: 1시간 30분 / 90분 / 2:30"
+                              className="h-8 w-[180px]"
+                              value={(returnDurations[r.reservation_id] ?? "") as string}
+                              onChange={(e) =>
+                                setReturnDurations((prev) => ({ ...prev, [r.reservation_id]: e.target.value }))
+                              }
+                            />
+                          </div>
                           <Button size="sm" variant="outline" onClick={() => assign(r)}>
                             배차 완료
                           </Button>

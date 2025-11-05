@@ -4,6 +4,9 @@ import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { supabase } from "../../utils/supabase/client";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog";
+import { Label } from "../ui/label";
+import { Input } from "../ui/input";
 
 interface ReservationRow {
   reservation_id: number;
@@ -37,6 +40,8 @@ export function ReservationAdmin() {
   const [items, setItems] = useState<PendingBooking[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
+  const [actionTarget, setActionTarget] = useState<{ id: number; action: "APPROVED" | "REJECTED" } | null>(null);
 
   useEffect(() => {
     const fetchReservations = async () => {
@@ -54,7 +59,7 @@ export function ReservationAdmin() {
             facilities ( name )
           `)
           .eq("reservation_type", "TRAINING")
-          .order("reservation_id", { ascending: false }); // ✅ id 내림차순 정렬
+          .order("reservation_id", { ascending: false });
 
         if (error) throw error;
         if (!data) {
@@ -115,19 +120,22 @@ export function ReservationAdmin() {
     [items]
   );
 
-  const updateStatus = async (id: number, status: PendingBooking["status"]) => {
+  const updateStatus = async (id: number, status: PendingBooking["status"], adminReason?: string) => {
     const originalItems = [...items];
     setItems((prev) => prev.map((it) => (it.id === id ? { ...it, status } : it)));
 
+    const payload: any = { status };
+    if (adminReason && adminReason.trim()) payload.admin_reason = adminReason.trim();
+
     const { error } = await supabase
       .from("reservations")
-      .update({ status })
+      .update(payload)
       .eq("reservation_id", id);
 
     if (error) {
-      console.error("상태 변경 실패:", error);
+      console.error("상태/사유 저장 실패:", error);
       setItems(originalItems);
-      alert("상태 변경에 실패했습니다. 다시 시도해 주세요.");
+      alert("상태 변경에 실패했습니다. (사유 저장 컬럼이 없을 수 있습니다)");
     }
   };
 
@@ -143,19 +151,19 @@ export function ReservationAdmin() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">시설 예약 승인 관리</h2>
-        <Badge variant="secondary">대기 중: {pendingCount}</Badge>
+        <Badge variant="secondary">대기 {pendingCount}</Badge>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>시설 예약 요청 목록</CardTitle>
+          <CardTitle>시설 예약 신청 목록</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>예약 ID</TableHead>
-                <TableHead>시설명</TableHead>
+                <TableHead>시설</TableHead>
                 <TableHead>신청자</TableHead>
                 <TableHead>예약 날짜</TableHead>
                 <TableHead>시간</TableHead>
@@ -177,30 +185,93 @@ export function ReservationAdmin() {
                   <TableCell>{item.participants}</TableCell>
                   <TableCell>
                     <Badge className={statusColor[item.status]}>
-                      {item.status === "PENDING"
-                        ? "대기중"
-                        : item.status === "APPROVED"
-                        ? "승인됨"
-                        : "거절됨"}
+                      {item.status === "PENDING" ? "대기중" : item.status === "APPROVED" ? "승인" : "거절"}
                     </Badge>
                   </TableCell>
                   <TableCell className="space-x-2 text-right">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={item.status === "APPROVED"}
-                      onClick={() => updateStatus(item.id, "APPROVED")}
-                    >
-                      승인
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={item.status === "REJECTED"}
-                      onClick={() => updateStatus(item.id, "REJECTED")}
-                    >
-                      거절
-                    </Button>
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={item.status === "APPROVED"}
+                          onClick={() => {
+                            setActionTarget({ id: item.id, action: "APPROVED" });
+                            setReason("");
+                          }}
+                        >
+                          승인
+                        </Button>
+                      </DialogTrigger>
+                      {actionTarget?.id === item.id && actionTarget.action === "APPROVED" && (
+                        <DialogContent className="bg-white">
+                          <DialogHeader>
+                            <DialogTitle>승인 사유 (선택)</DialogTitle>
+                          </DialogHeader>
+                          <div className="space-y-2">
+                            <Label className="mb-1">사유</Label>
+                            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="선택 입력" />
+                          </div>
+                          <DialogFooter>
+                            <Button variant="outline" onClick={() => setActionTarget(null)}>
+                              취소
+                            </Button>
+                            <Button
+                              onClick={async () => {
+                                await updateStatus(item.id, "APPROVED", reason);
+                                setActionTarget(null);
+                              }}
+                            >
+                              저장
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      )}
+                    </Dialog>
+
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={item.status === "REJECTED"}
+                          onClick={() => {
+                            setActionTarget({ id: item.id, action: "REJECTED" });
+                            setReason("");
+                          }}
+                        >
+                          거절
+                        </Button>
+                      </DialogTrigger>
+                      {actionTarget?.id === item.id && actionTarget.action === "REJECTED" && (
+                        <DialogContent className="bg-white">
+                          <DialogHeader>
+                            <DialogTitle>반려 사유</DialogTitle>
+                          </DialogHeader>
+                          <div className="space-y-2">
+                            <Label className="mb-1">사유</Label>
+                            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="반려 사유를 입력" />
+                          </div>
+                          <DialogFooter>
+                            <Button variant="outline" onClick={() => setActionTarget(null)}>
+                              취소
+                            </Button>
+                            <Button
+                              onClick={async () => {
+                                if (!reason.trim()) {
+                                  alert("반려 사유를 입력하세요");
+                                  return;
+                                }
+                                await updateStatus(item.id, "REJECTED", reason);
+                                setActionTarget(null);
+                              }}
+                            >
+                              저장
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      )}
+                    </Dialog>
                   </TableCell>
                 </TableRow>
               ))}
@@ -211,3 +282,4 @@ export function ReservationAdmin() {
     </div>
   );
 }
+

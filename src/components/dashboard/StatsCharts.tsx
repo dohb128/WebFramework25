@@ -1,104 +1,111 @@
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
-import { Badge } from "../ui/badge";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from "recharts";
-import { Calendar, Building2, Car, AlertTriangle, TrendingUp, Users, Clock } from "lucide-react";
-
-// 종목별 시설 이용률 데이터
-const sportUsageData = [
-  { sport: "축구", usage: 85 },
-  { sport: "농구", usage: 72 },
-  { sport: "배구", usage: 68 },
-  { sport: "수영", usage: 90 },
-  { sport: "육상", usage: 76 },
-  { sport: "테니스", usage: 63 }
-];
-
-// 시설별 예약률 데이터
-const facilityReservationData = [
-  { name: "훈련관", value: 45, color: "#005BAC" },
-  { name: "체육관", value: 30, color: "#28A745" },
-  { name: "회의실", value: 15, color: "#17A2B8" },
-  { name: "숙소", value: 10, color: "#FFC107" }
-];
-
-// 일별 배차 요청 데이터
-const dailyDispatchData = [
-  { date: "12/15", requests: 12 },
-  { date: "12/16", requests: 15 },
-  { date: "12/17", requests: 18 },
-  { date: "12/18", requests: 14 },
-  { date: "12/19", requests: 20 },
-  { date: "12/20", requests: 16 },
-  { date: "12/21", requests: 22 }
-];
-
-// 차량별 이용률 데이터
-const vehicleUsageData = [
-  { vehicle: "대형버스", usage: 78 },
-  { vehicle: "중형버스", usage: 65 },
-  { vehicle: "승용차", usage: 82 },
-  { vehicle: "승합차", usage: 71 },
-  { vehicle: "특수차량", usage: 45 }
-];
-
-const todayStats = [
-  {
-    title: "오늘 총 예약",
-    value: "47",
-    subtitle: "훈련시설 32, 부대시설 15",
-    icon: Calendar,
-    color: "text-blue-600"
-  },
-  {
-    title: "현재 가동률",
-    value: "73%",
-    subtitle: "전일 대비 +5%",
-    icon: TrendingUp,
-    color: "text-green-600"
-  },
-  {
-    title: "차량 배차",
-    value: "16",
-    subtitle: "승인 12, 대기 4",
-    icon: Car,
-    color: "text-purple-600"
-  },
-  {
-    title: "시설 이용자",
-    value: "284",
-    subtitle: "선수 198, 스태프 86",
-    icon: Users,
-    color: "text-orange-600"
-  }
-];
-
-const alerts = [
-  { id: 1, type: "warning", message: "체육관 B 에어컨 점검 필요", time: "10분 전" },
-  { id: 2, type: "info", message: "새로운 배차 요청 3건", time: "15분 전" },
-  { id: 3, type: "error", message: "수영장 A 예약 초과", time: "25분 전" },
-  { id: 4, type: "warning", message: "회의실 1 프로젝터 고장", time: "1시간 전" }
-];
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
+import { Calendar, TrendingUp, Car, Users } from "lucide-react";
+import { supabase } from "../../utils/supabase/client";
 
 export function StatsCharts() {
+  const [loading, setLoading] = useState(true);
+  const [todayCount, setTodayCount] = useState(0);
+  const [todayVehicle, setTodayVehicle] = useState(0);
+  const [pendingVehicle, setPendingVehicle] = useState(0);
+  const [facilityTypeData, setFacilityTypeData] = useState<{ name: string; value: number }[]>([]);
+  const [vehicleDaily, setVehicleDaily] = useState<{ date: string; requests: number }[]>([]);
+  const [vehicleUsage, setVehicleUsage] = useState<{ vehicle: string; usage: number }[]>([]);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      const today = new Date();
+      const ymd = today.toISOString().slice(0, 10);
+      const start = `${ymd}T00:00:00`;
+      const end = `${ymd}T23:59:59`;
+
+      const [{ data: resToday }, { data: vehToday }, { data: vehPend }] = await Promise.all([
+        supabase.from("reservations").select("reservation_id").gte("start_time", start).lte("start_time", end),
+        supabase.from("reservations").select("reservation_id").eq("reservation_type", "VEHICLE").gte("start_time", start).lte("start_time", end),
+        supabase.from("reservations").select("reservation_id").eq("reservation_type", "VEHICLE").eq("status", "PENDING"),
+      ]);
+      setTodayCount((resToday ?? []).length);
+      setTodayVehicle((vehToday ?? []).length);
+      setPendingVehicle((vehPend ?? []).length);
+
+      const { data: facType } = await supabase
+        .from("reservations")
+        .select("reservation_type")
+        .in("reservation_type", ["TRAINING", "AUXILIARY"])
+        .gte("start_time", start)
+        .lte("start_time", end);
+      const countByType: Record<string, number> = {};
+      (facType ?? []).forEach((r: any) => {
+        countByType[r.reservation_type] = (countByType[r.reservation_type] ?? 0) + 1;
+      });
+      setFacilityTypeData([
+        { name: "TRAINING", value: countByType["TRAINING"] ?? 0 },
+        { name: "AUXILIARY", value: countByType["AUXILIARY"] ?? 0 },
+      ]);
+
+      const since = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000);
+      const sinceStr = since.toISOString().slice(0, 10);
+      const { data: vehHist } = await supabase
+        .from("reservations")
+        .select("start_time")
+        .eq("reservation_type", "VEHICLE")
+        .gte("start_time", `${sinceStr}T00:00:00`);
+      const bucket: Record<string, number> = {};
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(since.getTime() + i * 86400000);
+        const k = d.toISOString().slice(5, 10);
+        bucket[k] = 0;
+      }
+      (vehHist ?? []).forEach((r: any) => {
+        const k = new Date(r.start_time).toISOString().slice(5, 10);
+        if (k in bucket) bucket[k] += 1;
+      });
+      setVehicleDaily(Object.entries(bucket).map(([date, requests]) => ({ date, requests })));
+
+      const { data: vehUse } = await supabase
+        .from("reservations")
+        .select("vehicle_id")
+        .eq("reservation_type", "VEHICLE")
+        .not("vehicle_id", "is", null);
+      const vc: Record<string, number> = {};
+      (vehUse ?? []).forEach((r: any) => {
+        const k = String(r.vehicle_id);
+        vc[k] = (vc[k] ?? 0) + 1;
+      });
+      const sorted = Object.entries(vc)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([vehicle, usage]) => ({ vehicle, usage }));
+      setVehicleUsage(sorted);
+
+      setLoading(false);
+    };
+    load();
+  }, []);
+
+  const cards = [
+    { title: "오늘 총 예약", value: String(todayCount), subtitle: "금일 시작 예약 수", icon: Calendar, color: "text-blue-600" },
+    { title: "차량 배차", value: String(todayVehicle), subtitle: `대기 ${pendingVehicle}`, icon: Car, color: "text-purple-600" },
+    { title: "훈련/부대시설", value: `${facilityTypeData[0]?.value ?? 0}/${facilityTypeData[1]?.value ?? 0}`, subtitle: "TRAINING/AUXILIARY", icon: TrendingUp, color: "text-green-600" },
+    { title: "예상 이용객", value: "-", subtitle: "집계 지표 준비 중", icon: Users, color: "text-orange-600" },
+  ];
+
   return (
     <div className="space-y-6">
-      {/* 실시간 예약 현황 */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {todayStats.map((stat) => {
-          const Icon = stat.icon;
+        {cards.map((stat) => {
+          const Icon = stat.icon as any;
           return (
             <Card key={stat.title}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  {stat.title}
-                </CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground">{stat.title}</CardTitle>
                 <Icon className={`h-4 w-4 ${stat.color}`} />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{stat.value}</div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {stat.subtitle}
-                </p>
+                <div className="text-2xl font-bold">{loading ? "…" : stat.value}</div>
+                <p className="text-xs text-muted-foreground mt-1">{stat.subtitle}</p>
               </CardContent>
             </Card>
           );
@@ -106,157 +113,60 @@ export function StatsCharts() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* 종목별 시설 이용률 */}
         <Card>
           <CardHeader>
-            <CardTitle>종목별 시설 이용률</CardTitle>
+            <CardTitle>시설 유형별 예약 (오늘)</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={sportUsageData}>
+              <BarChart data={facilityTypeData}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="sport" />
+                <XAxis dataKey="name" />
                 <YAxis />
-                <Tooltip formatter={(value) => [`${value}%`, "이용률"]} />
-                <Bar dataKey="usage" fill="#005BAC" />
+                <Tooltip />
+                <Bar dataKey="value" fill="#005BAC" />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
-        {/* 시설별 예약률 */}
         <Card>
           <CardHeader>
-            <CardTitle>시설별 예약률</CardTitle>
+            <CardTitle>최근 7일 차량 요청</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={facilityReservationData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={120}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {facilityReservationData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value) => [`${value}%`, "예약률"]} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="flex justify-center space-x-4 mt-4">
-              {facilityReservationData.map((entry) => (
-                <div key={entry.name} className="flex items-center space-x-2">
-                  <div 
-                    className="w-3 h-3 rounded-full" 
-                    style={{ backgroundColor: entry.color }}
-                  ></div>
-                  <span className="text-sm">{entry.name} {entry.value}%</span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* 일별 배차 요청 건수 */}
-        <Card>
-          <CardHeader>
-            <CardTitle>일별 배차 요청 건수</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={dailyDispatchData}>
+              <LineChart data={vehicleDaily}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="date" />
                 <YAxis />
-                <Tooltip formatter={(value) => [`${value}건`, "요청 건수"]} />
-                <Line 
-                  type="monotone" 
-                  dataKey="requests" 
-                  stroke="#28A745" 
-                  strokeWidth={3}
-                  dot={{ fill: "#28A745", strokeWidth: 2, r: 6 }}
-                />
+                <Tooltip />
+                <Line type="monotone" dataKey="requests" stroke="#28A745" strokeWidth={3} dot={{ r: 3 }} />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
+      </div>
 
-        {/* 차량별 이용률 */}
+      <div className="grid grid-cols-1">
         <Card>
           <CardHeader>
-            <CardTitle>차량별 이용률</CardTitle>
+            <CardTitle>차량별 이용량 (Top5)</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={vehicleUsageData} layout="horizontal">
+              <BarChart data={vehicleUsage} layout="horizontal">
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis type="number" />
-                <YAxis dataKey="vehicle" type="category" width={80} />
-                <Tooltip formatter={(value) => [`${value}%`, "이용률"]} />
-                <Bar dataKey="usage" fill="#17A2B8" />
+                <YAxis dataKey="vehicle" type="category" width={60} />
+                <Tooltip />
+                <Bar dataKey="usage" fill="#6C63FF" />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
       </div>
-
-      {/* 경고 및 알림 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-orange-500" />
-            경고 및 알림
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {alerts.map((alert) => (
-              <div key={alert.id} className="flex items-center justify-between p-3 border rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className={`w-2 h-2 rounded-full ${
-                    alert.type === "error" ? "bg-red-500" :
-                    alert.type === "warning" ? "bg-yellow-500" : "bg-blue-500"
-                  }`}></div>
-                  <span>{alert.message}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">{alert.time}</span>
-                  <Badge 
-                    variant="secondary"
-                    className={
-                      alert.type === "error" ? "bg-red-100 text-red-800" :
-                      alert.type === "warning" ? "bg-yellow-100 text-yellow-800" : 
-                      "bg-blue-100 text-blue-800"
-                    }
-                  >
-                    {alert.type === "error" ? "오류" :
-                     alert.type === "warning" ? "경고" : "정보"}
-                  </Badge>
-                </div>
-              </div>
-            ))}
-          </div>
-          
-          <div className="mt-6 p-4 bg-primary/5 rounded-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="font-medium">승인 대기 건수</h4>
-                <p className="text-sm text-muted-foreground">시설 예약 7건, 차량 배차 4건이 승인 대기 중입니다</p>
-              </div>
-              <Badge className="bg-primary text-primary-foreground">
-                11건 대기
-              </Badge>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }
+
