@@ -10,6 +10,8 @@ import { supabase } from "../../utils/supabase/client";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { Input } from "../ui/input";
 
+const VEHICLE_ATTACHMENT_BUCKET = "vehicle-attachments";
+
 type DbStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED" | "COMPLETED";
 
 type ReservationRow = {
@@ -26,6 +28,7 @@ type ReservationRow = {
   status: DbStatus | null;
   departure?: string | null;
   destination?: string | null;
+  vehicle_request_attachments?: { attachment_id: number; file_name: string | null; file_path: string }[] | null;
 };
 
 type DriverRow = {
@@ -108,7 +111,7 @@ export function VehicleDispatchAdmin() {
           .from("dispatches")
           .select(
             `dispatch_id, reservation_id, driver_id, vehicle_id, status, created_at,
-             reservations ( reservation_id, start_time, end_time, departure, destination ),
+             reservations ( reservation_id, start_time, end_time, departure, destination, vehicle_request_attachments ( attachment_id, file_name, file_path ) ),
              drivers ( name, phone ),
              vehicles ( plate_no, model )`
           )
@@ -117,7 +120,7 @@ export function VehicleDispatchAdmin() {
         const { data: pending } = await supabase
           .from("reservations")
           .select(
-            "reservation_id, reservation_type, user_id, org_id, facility_id, vehicle_id, title, participants, start_time, end_time, status, departure, destination"
+            "reservation_id, reservation_type, user_id, org_id, facility_id, vehicle_id, title, participants, start_time, end_time, status, departure, destination, vehicle_request_attachments ( attachment_id, file_name, file_path )"
           )
           .eq("reservation_type", "VEHICLE")
           .in("status", ["PENDING", "APPROVED"]) // 처리 대상
@@ -227,7 +230,7 @@ export function VehicleDispatchAdmin() {
         .from("dispatches")
         .select(
           `dispatch_id, reservation_id, driver_id, vehicle_id, status, created_at,
-           reservations ( reservation_id, start_time, end_time, departure, destination ),
+           reservations ( reservation_id, start_time, end_time, departure, destination, vehicle_request_attachments ( attachment_id, file_name, file_path ) ),
            drivers ( name, phone ),
            vehicles ( plate_no, model )`
         )
@@ -235,7 +238,7 @@ export function VehicleDispatchAdmin() {
       supabase
         .from("reservations")
         .select(
-          "reservation_id, reservation_type, user_id, org_id, facility_id, vehicle_id, title, participants, start_time, end_time, status, departure, destination"
+          "reservation_id, reservation_type, user_id, org_id, facility_id, vehicle_id, title, participants, start_time, end_time, status, departure, destination, vehicle_request_attachments ( attachment_id, file_name, file_path )"
         )
         .eq("reservation_type", "VEHICLE")
         .in("status", ["PENDING", "APPROVED"]) // 처리 대상
@@ -511,6 +514,22 @@ export function VehicleDispatchAdmin() {
                         <TableCell>
                           #{r.reservation_id}
                           <div className="text-xs text-muted-foreground">{r.title ?? "-"}</div>
+                          {r.vehicle_request_attachments && r.vehicle_request_attachments.length > 0 && (
+                            <div className="mt-1 space-y-1 text-xs">
+                              <div className="font-medium text-muted-foreground">???</div>
+                              <div className="flex flex-wrap gap-2">
+                                {r.vehicle_request_attachments.map((att) => {
+                                  const publicUrl = supabase.storage.from(VEHICLE_ATTACHMENT_BUCKET).getPublicUrl(att.file_path).data.publicUrl;
+                                  const name = att.file_name ?? att.file_path.split('/').pop() ?? `???? ${att.attachment_id}`;
+                                  return (
+                                    <a key={`${r.reservation_id}-${att.attachment_id}`} href={publicUrl} target="_blank" rel="noreferrer" className="underline text-blue-600">
+                                      {name}
+                                    </a>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell>
                           <div>{fmtDate(r.start_time)}</div>

@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+﻿import { useEffect, useState } from "react";
 import type { Facility } from "./FacilityReservation";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Button } from "../ui/button";
@@ -9,6 +9,19 @@ import { Textarea } from "../ui/textarea";
 import { Alert, AlertDescription } from "../ui/alert";
 import { supabase } from "../../utils/supabase/client";
 import { useAuth } from "../../contexts/useAuth";
+
+interface Equipment {
+  equipment_id: number;
+  name: string;
+  description?: string | null;
+  total_quantity: number;
+  available_quantity: number;
+}
+
+interface SelectedEquipment {
+  equipment_id: number;
+  quantity: number;
+}
 
 interface FacilityBookingProps {
   facility: Facility;
@@ -26,6 +39,32 @@ export function FacilityBooking({ facility, onBack }: FacilityBookingProps) {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState([540, 660]); // 9:00 ~ 11:00
+  const [equipment, setEquipment] = useState<Equipment[]>([]);
+  const [selectedEquipment, setSelectedEquipment] = useState<SelectedEquipment[]>([]);
+  const [equipmentError, setEquipmentError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadEquipment = async () => {
+      setEquipmentError(null);
+      const { data, error } = await supabase
+        .from("equipment")
+        .select("equipment_id, name, description, total_quantity, available_quantity")
+        .order("name", { ascending: true });
+      if (!mounted) return;
+      if (error) {
+        console.error("장비 목록 조회 실패:", error);
+        setEquipmentError("장비 정보를 불러오지 못했습니다.");
+        setEquipment([]);
+      } else {
+        setEquipment((data ?? []) as Equipment[]);
+      }
+    };
+    loadEquipment();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const minutesToTime = (minutes: number) => {
     const h = Math.floor(minutes / 60)
@@ -89,37 +128,84 @@ export function FacilityBooking({ facility, onBack }: FacilityBookingProps) {
       return;
     }
 
-    if (overlappingReservations && overlappingReservations.length > 0) {
-      setSubmitError("해당 시간대는 이미 예약되어 있거나 승인 대기 중입니다. 다른 시간을 선택해주세요.");
-      setSubmitting(false);
-      return;
-    }
-
-    const { error } = await supabase.from("reservations").insert({
-      reservation_type: facility.category,
-      user_id: user.user_id,
-      facility_id: facility.facility_id,
-      title: notes ? notes.slice(0, 200) : `${facility.name} 예약 신청`,
-      participants: participantCount,
-      start_time: startTimeStr,
-      end_time: endTimeStr,
-    });
-
-    setSubmitting(false);
-
-    if (error) {
-      console.error("예약 신청 실패:", error);
-      setSubmitError("예약 신청에 실패했습니다. 잠시 후 다시 시도해주세요.");
-      return;
-    }
-
-    setSubmitSuccess("예약 신청이 완료되었습니다. 관리자의 승인을 기다려주세요.");
-    setNotes("");
-    setParticipants("1");
-    setStartTime("");
-    setEndTime("");
-    setDate("");
-  };
+    if (overlappingReservations && overlappingReservations.length > 0) {
+      setSubmitError("??? ?????? ??? ?????? ???? ???? ??? ??????. ??? ????? ???????????.");
+      setSubmitting(false);
+      return;
+    }
+
+    for (const selection of selectedEquipment) {
+      const eq = equipment.find((item) => item.equipment_id === selection.equipment_id);
+      if (!eq) {
+        setSubmitError("??? ?? ??? ?? ? ????.");
+        setSubmitting(false);
+        return;
+      }
+      if (selection.quantity < 1 || selection.quantity > eq.available_quantity) {
+        setSubmitError(`??? ?? '${eq.name}'? ??? ?????.`);
+        setSubmitting(false);
+        return;
+      }
+    }
+
+    const { data: reservationData, error } = await supabase
+      .from("reservations")
+      .insert({
+        reservation_type: facility.category,
+        user_id: user.user_id,
+        facility_id: facility.facility_id,
+        title: notes ? notes.slice(0, 200) : `${facility.name} ???? ???`,
+        participants: participantCount,
+        start_time: startTimeStr,
+        end_time: endTimeStr,
+      })
+      .select("reservation_id")
+      .single();
+
+    if (error || !reservationData) {
+      console.error("???? ??? ????:", error);
+      setSubmitError("???? ????? ??????????. ??? ?? ??? ??????????.");
+      setSubmitting(false);
+      return;
+    }
+
+    if (selectedEquipment.length > 0) {
+      const rows = selectedEquipment
+        .filter((item) => item.quantity > 0)
+        .map((item) => ({
+          reservation_id: reservationData.reservation_id,
+          equipment_id: item.equipment_id,
+          quantity: item.quantity,
+        }));
+
+      if (rows.length > 0) {
+        const { error: equipmentError } = await supabase.from("reservation_equipment").insert(rows);
+        if (equipmentError) {
+          console.error("?? ?? ??:", equipmentError);
+          setSubmitError("?? ?? ? ??? ??????. ????? ??????.");
+          setSubmitting(false);
+          return;
+        }
+        setEquipment((prev) =>
+          prev.map((eq) => {
+            const used = rows.find((row) => row.equipment_id === eq.equipment_id);
+            if (!used) return eq;
+            return { ...eq, available_quantity: Math.max(eq.available_quantity - used.quantity, 0) };
+          }),
+        );
+      }
+    }
+
+    setSubmitting(false);
+
+    setSubmitSuccess("???? ????? ??????????. ???????? ?????? ?????????.");
+    setNotes("");
+    setParticipants("1");
+    setStartTime("");
+    setEndTime("");
+    setDate("");
+    setSelectedEquipment([]);
+  };
 
   return (
     <div className="space-y-6">
@@ -197,6 +283,56 @@ export function FacilityBooking({ facility, onBack }: FacilityBookingProps) {
                 step={30}
                 className="py-2"
               />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>??? ????</Label>
+                {equipmentError && <span className="text-xs text-red-500">{equipmentError}</span>}
+              </div>
+              <div className="space-y-3 rounded-md border p-4">
+                {equipment.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">??? ?????? ??? ???????.</p>
+                ) : (
+                  equipment.map((eq) => {
+                    const quantity = selectedEquipment.find((item) => item.equipment_id === eq.equipment_id)?.quantity ?? 0;
+                    return (
+                      <div key={eq.equipment_id} className="flex flex-col gap-2 border-b pb-3 last:border-b-0 last:pb-0">
+                        <div className="flex items-center justify-between text-sm font-medium">
+                          <span>{eq.name}</span>
+                          <span className="text-xs text-muted-foreground">???? ????: {eq.available_quantity}</span>
+                        </div>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={eq.available_quantity}
+                          value={quantity}
+                          onChange={(event) => {
+                            const value = Number(event.target.value);
+                            setSelectedEquipment((prev) => {
+                              const existing = prev.find((item) => item.equipment_id === eq.equipment_id);
+                              if (existing) {
+                                if (!value) {
+                                  return prev.filter((item) => item.equipment_id !== eq.equipment_id);
+                                }
+                                return prev.map((item) =>
+                                  item.equipment_id === eq.equipment_id ? { ...item, quantity: value } : item,
+                                );
+                              }
+                              if (value > 0) {
+                                return [...prev, { equipment_id: eq.equipment_id, quantity: value }];
+                              }
+                              return prev;
+                            });
+                          }}
+                          className="w-24"
+                          disabled={eq.available_quantity === 0}
+                        />
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </div>
 
             <div className="space-y-2">

@@ -11,6 +11,9 @@ import { Textarea } from "../ui/textarea";
 import { Calendar as CalendarIcon, Car } from "lucide-react";
 import { useAuth } from "../../contexts/useAuth";
 import { supabase } from "../../utils/supabase/client";
+import { Alert, AlertDescription } from "../ui/alert";
+
+const VEHICLE_ATTACHMENT_BUCKET = "vehicle-attachments";
 
 interface VehicleRequest {
   id: string;
@@ -26,6 +29,7 @@ interface VehicleRequest {
   status: "pending" | "approved" | "completed" | "cancelled";
   purpose: string;
   requestDate: string;
+  attachments?: { name: string; url: string }[];
 }
 
 type DbStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED" | "COMPLETED";
@@ -42,6 +46,7 @@ type ReservationRow = {
   org_id: number | null;
   departure?: string | null;
   destination?: string | null;
+  vehicle_request_attachments?: { attachment_id: number; file_name: string | null; file_path: string }[] | null;
 };
 
 export function VehicleDispatch() {
@@ -53,6 +58,9 @@ export function VehicleDispatch() {
   const [destination, setDestination] = useState("");
   const [passengers, setPassengers] = useState(1);
   const [purpose, setPurpose] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // 배차 완료된(할당된) 나의 예약 목록 (현재/미래)
   type MyAssigned = {
@@ -107,7 +115,7 @@ export function VehicleDispatch() {
         const { data: mine, error: errMine } = await supabase
           .from("reservations")
           .select(
-            "reservation_id, vehicle_id, title, participants, start_time, end_time, status, user_id, org_id, departure, destination"
+            "reservation_id, vehicle_id, title, participants, start_time, end_time, status, user_id, org_id, departure, destination, vehicle_request_attachments(attachment_id, file_name, file_path)"
           )
           .eq("reservation_type", "VEHICLE")
           .eq("user_id", user?.user_id ?? "")
@@ -133,6 +141,10 @@ export function VehicleDispatch() {
           status: mapStatus(r.status ?? undefined),
           purpose: r.title ?? "-",
           requestDate: r.start_time ? new Date(r.start_time).toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" }) : "",
+          attachments: (r.vehicle_request_attachments ?? []).map((att) => {
+            const publicUrl = supabase.storage.from(VEHICLE_ATTACHMENT_BUCKET).getPublicUrl(att.file_path).data.publicUrl;
+            return { name: att.file_name ?? att.file_path.split("/").pop() ?? "Attachment", url: publicUrl };
+          }),
         }));
 
         if (!mounted) return;
@@ -229,11 +241,15 @@ export function VehicleDispatch() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
-    if (!selectedDate || !selectedTime) return;
+    if (!selectedDate || !selectedTime) {
+      setFormError("????? ????? ???????????.");
+      return;
+    }
+
+    setFormError(null);
+    setIsSubmitting(true);
 
     const [hh, mm] = selectedTime.split(":");
-    // 선택한 날짜/시간을 KST 벽시계 시각 그대로 DB(timestamp without time zone)에 저장하기 위해
-    // 타임존 오프셋이 없는 문자열(YYYY-MM-DD HH:mm:ss)로 구성합니다.
     const y = selectedDate.getFullYear();
     const mon = selectedDate.getMonth() + 1;
     const day = selectedDate.getDate();
@@ -246,7 +262,7 @@ export function VehicleDispatch() {
     const startStr = toLocalTimestampString(startLocal);
     const endStr = toLocalTimestampString(endLocal);
 
-    const title = purpose?.trim() || `차량 이용 요청: ${user.name ?? "사용자"}`;
+    const title = purpose?.trim() || `???? ??? ???: ${user.name ?? "?????"}`;
 
     const { data, error } = await supabase
       .from("reservations")
@@ -267,14 +283,56 @@ export function VehicleDispatch() {
       .select("reservation_id, start_time")
       .single();
 
-    if (error) {
-      console.error("예약 생성 실패", error);
+    if (error || !data) {
+      console.error("???? ??? ????", error);
+      setFormError("????? ???????? ??????????. ??? ??????????.");
+      setIsSubmitting(false);
       return;
     }
 
+    const reservationId = data.reservation_id;
+    const uploadedAttachments: { name: string; url: string }[] = [];
+
+    if (selectedFiles && selectedFiles.length > 0) {
+      for (const file of Array.from(selectedFiles)) {
+        const filePath = `${user.user_id}/${reservationId}/${Date.now()}-${file.name}`;
+        const { error: uploadError } = await supabase.storage
+          .from(VEHICLE_ATTACHMENT_BUCKET)
+          .upload(filePath, file, { upsert: false });
+
+        if (uploadError) {
+          console.error("??? ???? ????? ????", uploadError);
+          setFormError("??? ???? ????? ?? ??????????. ??? ??????????.");
+          setIsSubmitting(false);
+          return;
+        }
+
+        const { data: publicUrlData } = supabase.storage.from(VEHICLE_ATTACHMENT_BUCKET).getPublicUrl(filePath);
+        uploadedAttachments.push({
+          name: file.name,
+          url: publicUrlData.publicUrl,
+        });
+
+        const { error: insertAttachmentError } = await supabase
+          .from("vehicle_request_attachments")
+          .insert({
+            reservation_id: reservationId,
+            file_path: filePath,
+            file_name: file.name,
+          });
+
+        if (insertAttachmentError) {
+          console.error("??? ???? ???? ????", insertAttachmentError);
+          setFormError("??? ?????? ???????? ??????????. ???????? ???????.");
+          setIsSubmitting(false);
+          return;
+        }
+      }
+    }
+
     const newReq: VehicleRequest = {
-      id: String(data?.reservation_id ?? Date.now()),
-      requestId: `#${data?.reservation_id ?? "-"}`,
+      id: String(data.reservation_id ?? Date.now()),
+      requestId: `#${data.reservation_id ?? "-"}`,
       vehicleNumber: "-",
       driverName: "-",
       driverPhone: "-",
@@ -286,16 +344,18 @@ export function VehicleDispatch() {
       status: "pending",
       purpose: title,
       requestDate: startLocal.toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" }),
+      attachments: uploadedAttachments,
     };
     setRequests((prev) => [newReq, ...prev].slice(0, 5));
 
-    // 입력 초기화
     setSelectedDate(undefined);
     setSelectedTime("");
     setDeparture("");
     setDestination("");
     setPassengers(1);
     setPurpose("");
+    setSelectedFiles(null);
+    setIsSubmitting(false);
   };
 
   const handleCancel = async (id: string) => {
@@ -391,11 +451,25 @@ export function VehicleDispatch() {
 
                 {/* 목적 */}
                 <div>
+                  <Label htmlFor="attachments" className="mb-2">??? ????</Label>
+                  <Input id="attachments" type="file" multiple onChange={(e) => setSelectedFiles(e.target.files)} />
+                  <p className="text-xs text-muted-foreground mt-1">???? ????? ????? ?????? ??????? ?? ??????.</p>
+                </div>
+
+               <div>
                   <Label htmlFor="purpose" className="mb-2">이용 목적</Label>
                   <Textarea id="purpose" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="이용 목적을 입력하세요" rows={3} required />
                 </div>
 
-                <Button type="submit" className="w-full">요청 제출</Button>
+                {formError && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{formError}</AlertDescription>
+                  </Alert>
+                )}
+
+                <Button type="submit" className="w-full" disabled={isSubmitting}>
+                  {isSubmitting ? "??? ??..." : "??? ????"}
+                </Button>
               </form>
             </CardContent>
           </Card>
