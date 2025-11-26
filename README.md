@@ -5,11 +5,10 @@ WebFramework25
 WebFramework25는 “국가대표선수촌 예약관리시스템”을 구현한 웹 애플리케이션입니다. 주사용 기술 스택은 React + TypeScript + Vite 로, 프론트엔드 중심 프로젝트이며, 예약 관리, 인증, DB 연동 등을 포함한 시스템을 목표로 합니다. 
 
 📂 폴더 구조
-
+```
 /public         — 정적 파일 (index.html 등)  
 /src            — 주요 React + TypeScript 소스 코드  
 /supabase/functions/server — 백엔드 / 서버리스 함수 (예약/인증/관리 로직)  
-```
 기타 설정 파일들 (tsconfig, eslint, tailwind, vite 등)
 ``` 
 
@@ -44,7 +43,7 @@ WebFramework25는 “국가대표선수촌 예약관리시스템”을 구현한
    git clone https://github.com/dohb128/WebFramework25.git ```
 
 2. dependencies 설치 & 개발 서버 실행
-
+```
 cd WebFramework25  
 npm install  
-npm run dev
+npm run dev```
