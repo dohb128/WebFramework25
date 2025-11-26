@@ -9,7 +9,8 @@ WebFramework25는 “국가대표선수촌 예약관리시스템”을 구현한
 /public         — 정적 파일 (index.html 등)  
 /src            — 주요 React + TypeScript 소스 코드  
 /supabase/functions/server — 백엔드 / 서버리스 함수 (예약/인증/관리 로직)  
-... 기타 설정 파일들 (tsconfig, eslint, tailwind, vite 등)
+```
+기타 설정 파일들 (tsconfig, eslint, tailwind, vite 등)
 ``` 
 
 ## 🛠️ 사용 기술  
@@ -40,7 +41,7 @@ WebFramework25는 “국가대표선수촌 예약관리시스템”을 구현한
 
 1. 레포지토리 클론  
    ```bash
-   git clone https://github.com/dohb128/WebFramework25.git
+   git clone https://github.com/dohb128/WebFramework25.git ```
 
 2. dependencies 설치 & 개발 서버 실행
 
