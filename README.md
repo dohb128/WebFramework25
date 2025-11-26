@@ -14,9 +14,9 @@ WebFramework25는 “국가대표선수촌 예약관리시스템”을 구현한
 
 ## 🛠️ 사용 기술  
 
-- React + TypeScript + Vite 3  
-- Tailwind CSS (스타일링) 4  
-- ESLint + 타입 체크 설정 (엄격한 타입스크립트 + 코드 품질 유지) 5  
+- React + TypeScript + Vite 
+- Tailwind CSS (스타일링)   
+- ESLint + 타입 체크 설정 (엄격한 타입스크립트 + 코드 품질 유지) 
 - (백엔드) Supabase 기반 serverless 함수 — 예약/인증/관리 기능 구현. 
 
 ## ✅ 주요 기능  
